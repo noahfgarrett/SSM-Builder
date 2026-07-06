@@ -390,11 +390,12 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .dtable thead th{position:sticky;top:0;z-index:2;background:var(--surface-2);font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--ink-3);font-weight:700;white-space:nowrap}
 .dtable.cmp thead th.sub{top:34px;font-size:10px}
 .dtable.review thead th.sub{top:44px;font-size:10px}
-.source-head{height:44px;padding:7px 13px!important;background:linear-gradient(180deg,var(--surface),var(--surface-2))!important;z-index:3!important;vertical-align:middle!important}
-.source-kicker{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:999px;padding:2px 8px;font-size:10px;font-weight:760;letter-spacing:.35px;text-transform:uppercase}
-.source-title{display:block;margin-top:3px;font-size:10px;color:var(--ink-3);font-weight:680;letter-spacing:.3px;text-transform:uppercase}
-.source-head.cable .source-kicker{background:var(--accent-100);border-color:var(--accent-200);color:var(--accent-700)}
-.source-head.ep .source-kicker{background:#eef3fb;border-color:#d6e3f5;color:#2f5fa8}
+.source-head{height:44px;padding:10px 13px 8px!important;background:linear-gradient(180deg,var(--surface),var(--surface-2))!important;border-bottom:none!important;z-index:3!important;vertical-align:bottom!important}
+.source-head span{position:relative;display:inline-flex;align-items:center;gap:7px;color:var(--ink);font-size:11px;font-weight:780;letter-spacing:.45px;text-transform:uppercase}
+.source-head span::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--accent-600);box-shadow:0 0 0 3px var(--accent-100)}
+.source-head span::after{content:"";position:absolute;left:14px;right:0;bottom:-8px;height:2px;border-radius:999px;background:var(--accent-300)}
+.source-head.ep span::before{background:#2f5fa8;box-shadow:0 0 0 3px #eef3fb}
+.source-head.ep span::after{background:#d6e3f5}
 .dtable tbody tr:last-child td{border-bottom:none}
 .dtable tbody tr:hover td{background:var(--surface-2)}
 .dtable td.mono{font-family:var(--mono);font-size:12.5px}
@@ -1733,8 +1734,8 @@ function renderReviewPanel(){
       <span class="hint spacer" id="revCnt"></span>
     </div>
     <div class="tablecard" id="revCard"><table class="dtable review"><thead><tr>
-      <th colspan="3" class="source-head cable"><span class="source-kicker">Cable Schedule</span><span class="source-title">To / From</span></th>
-      <th colspan="2" class="source-head ep"><span class="source-kicker">Easy Power</span><span class="source-title">Source / Downstream / ID Name</span></th>
+      <th colspan="3" class="source-head cable"><span>Cable Schedule</span></th>
+      <th colspan="2" class="source-head ep"><span>Easy Power</span></th>
     </tr><tr>
       <th class="sortable sub ${sc('load')}" data-sort="load">Load Name (To)</th>
       <th class="sortable sub ${sc('panel')}" data-sort="panel">Panel (From)</th>

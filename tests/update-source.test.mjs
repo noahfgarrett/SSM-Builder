@@ -106,14 +106,17 @@ test('changelog modal is available from update tabs and the version link', () =>
 test('review tab groups columns by their source system', () => {
   assert.match(html, /<table class="dtable review">/)
   assert.match(html, /<th colspan="3" class="source-head cable">/)
-  assert.match(html, /<span class="source-kicker">Cable Schedule<\/span>/)
-  assert.match(html, /<span class="source-title">To \/ From<\/span>/)
+  assert.match(html, /<th colspan="3" class="source-head cable"><span>Cable Schedule<\/span><\/th>/)
   assert.match(html, /<th colspan="2" class="source-head ep">/)
-  assert.match(html, /<span class="source-kicker">Easy Power<\/span>/)
-  assert.match(html, /<span class="source-title">Source \/ Downstream \/ ID Name<\/span>/)
+  assert.match(html, /<th colspan="2" class="source-head ep"><span>Easy Power<\/span><\/th>/)
   assert.match(html, /\.dtable\.review thead th\.sub\{[^}]*top:44px/)
-  assert.match(html, /\.source-head\.cable \.source-kicker/)
-  assert.match(html, /\.source-head\.ep \.source-kicker/)
+  assert.match(html, /\.source-head span\{[^}]*font-size:11px/)
+  assert.match(html, /\.source-head span::before/)
+  assert.match(html, /\.source-head span::after/)
+  assert.doesNotMatch(html, /source-kicker/)
+  assert.doesNotMatch(html, /source-title/)
+  assert.doesNotMatch(html, /To \/ From/)
+  assert.doesNotMatch(html, /Source \/ Downstream \/ ID Name/)
 })
 
 test('comparison and SSM exports replace duplicated dependency values with N/A', () => {
