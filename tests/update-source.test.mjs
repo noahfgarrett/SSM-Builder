@@ -90,6 +90,7 @@ test('changelog modal is available from update tabs and the version link', () =>
   assert.match(html, /type:'feature'/)
   assert.match(html, /type:'fix'/)
   assert.match(html, /type:'major'/)
+  assert.match(html, /Fixed changelog entries crowding together instead of scrolling/)
   assert.match(html, /class="update-tab" id="changelogTab"/)
   assert.match(html, /id="changelogPanel"/)
   assert.match(html, /function renderChangelog\(info\)/)
@@ -101,7 +102,9 @@ test('changelog modal is available from update tabs and the version link', () =>
   assert.match(html, /\.change-entry\.fix/)
   assert.match(html, /\.update-card\.wide\{[^}]*height:min\(500px,calc\(100vh - 40px\)\)/)
   assert.match(html, /#updatePanel:not\(\[hidden\]\),#changelogPanel:not\(\[hidden\]\)\{display:flex;flex:1;min-height:0;flex-direction:column\}/)
-  assert.match(html, /\.changelog-list\{[^}]*flex:1;min-height:0;max-height:none;overflow:auto/)
+  assert.match(html, /\.changelog-intro\{[^}]*flex:0 0 auto/)
+  assert.match(html, /\.changelog-list\{[^}]*flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-x:hidden/)
+  assert.match(html, /\.change-entry\{[^}]*flex:0 0 auto/)
 })
 
 test('review tab groups columns by their source system', () => {
