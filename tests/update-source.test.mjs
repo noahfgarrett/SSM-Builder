@@ -50,12 +50,17 @@ test('clicking update downloads the tagged raw HTML file as a local HTML file', 
   assert.doesNotMatch(html, /Please try again from a fresh connection/)
 })
 
-test('iPad users get touch-friendly layout and a share-sheet update fallback', () => {
+test('desktop update downloads bypass the share sheet while iPad keeps a fallback', () => {
   assert.match(html, /@media \(max-width:820px\)/)
   assert.match(html, /@media \(pointer:coarse\)/)
   assert.match(html, /function saveUpdateHtml\(htmlBlob,filename\)/)
+  assert.match(html, /function isIOSUpdateDevice\(\)/)
+  assert.match(html, /function shouldUseShareSheetForUpdate\(file\)/)
+  assert.match(html, /platform==='MacIntel'&&navigator\.maxTouchPoints>1/)
   assert.match(html, /navigator\.canShare/)
   assert.match(html, /navigator\.share/)
+  assert.match(html, /if\(shouldUseShareSheetForUpdate\(file\)\)\{/)
+  assert.match(html, /saveBlob\(htmlBlob,filename,'text\/html'\)/)
   assert.match(html, /new File\(\[htmlBlob\],filename,\{type:'text\/html'\}\)/)
 })
 
@@ -69,6 +74,7 @@ test('loader progress keeps a composited spinner and growing percent ring on iPa
 
 test('changelog modal is available from update tabs and the version link', () => {
   assert.match(html, /const CHANGELOG=\[/)
+  assert.match(html, /version:'1\.0\.4'/)
   assert.match(html, /version:'1\.0\.3'/)
   assert.match(html, /version:'1\.0\.2'/)
   assert.match(html, /type:'feature'/)

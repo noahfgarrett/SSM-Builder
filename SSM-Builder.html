@@ -565,13 +565,20 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.0.3';
+const APP_VERSION = '1.0.4';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.0.4',
+    date:'2026-07-06T12:55:12Z',
+    type:'fix',
+    stats:{fixes:1},
+    notes:`- Fixed update downloads opening the Windows share sheet`
+  },
   {
     version:'1.0.3',
     date:'2026-07-06T12:43:45Z',
@@ -1873,14 +1880,21 @@ function renderFiltered(hl){
 }
 
 /* ---- exports ---- */
+function isIOSUpdateDevice(){
+  const ua=navigator.userAgent||'',platform=navigator.platform||'';
+  return /iPad|iPhone|iPod/i.test(ua)||(platform==='MacIntel'&&navigator.maxTouchPoints>1);
+}
+function shouldUseShareSheetForUpdate(file){
+  return !!(isIOSUpdateDevice()&&file&&navigator.canShare&&navigator.share&&navigator.canShare({files:[file]}));
+}
 async function saveUpdateHtml(htmlBlob,filename){
-  try{
-    const file=typeof File==='function'?new File([htmlBlob],filename,{type:'text/html'}):null;
-    if(file&&navigator.canShare&&navigator.share&&navigator.canShare({files:[file]})){
+  const file=typeof File==='function'?new File([htmlBlob],filename,{type:'text/html'}):null;
+  if(shouldUseShareSheetForUpdate(file)){
+    try{
       await navigator.share({files:[file],title:filename});
       return;
-    }
-  }catch(e){}
+    }catch(e){}
+  }
   saveBlob(htmlBlob,filename,'text/html');
 }
 function saveBlob(blob,filename,mimeType){const out=mimeType?new Blob([blob],{type:mimeType}):blob;const url=URL.createObjectURL(out);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);}
