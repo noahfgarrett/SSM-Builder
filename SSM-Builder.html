@@ -246,7 +246,8 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .loader{background:var(--surface);border:1px solid var(--border);border-radius:20px;box-shadow:var(--shadow-lg);padding:30px 38px 26px;display:flex;flex-direction:column;align-items:center;gap:7px;min-width:268px;text-align:center;animation:mpop .18s cubic-bezier(.22,1,.36,1)}
 .ring{position:relative;width:96px;height:96px;margin-bottom:8px}
 .ring::before{content:"";position:absolute;inset:8px;border-radius:50%;background:radial-gradient(closest-side,rgba(234,88,12,.12),transparent 75%);animation:lpulse 2s ease-in-out infinite}
-.ring svg{width:96px;height:96px;transform-origin:center;animation:ringspin 2.4s linear infinite;position:relative;will-change:transform}
+.ring-spin{width:96px;height:96px;transform-origin:center;animation:ringspin 2.4s linear infinite;position:relative;will-change:transform}
+.ring svg{width:96px;height:96px;display:block}
 .ring-track{fill:none;stroke:var(--tint-2);stroke-width:7}
 .ring-prog{fill:none;stroke:url(#lgrad);stroke-width:7;stroke-linecap:round;stroke-dasharray:238.76;stroke-dashoffset:238.76;transition:stroke-dashoffset .3s cubic-bezier(.22,1,.36,1);filter:drop-shadow(0 0 4px rgba(234,88,12,.5))}
 @keyframes ringspin{to{transform:rotate(360deg)}}
@@ -420,7 +421,13 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
   .dz{min-height:240px;display:grid;place-items:center}
   .update-card{max-width:min(500px,calc(100vw - 28px))}
 }
-@media (prefers-reduced-motion:reduce){*{transition:none!important;animation-duration:.001ms!important}}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation-duration:.001ms!important}
+  #overlay.show .ring-spin{animation:ringspin 2.4s linear infinite!important}
+  #overlay.show .ring::before{animation:lpulse 2s ease-in-out infinite!important}
+  #overlay.show .ring-dots i{animation:ld 1s ease-in-out infinite!important}
+  #overlay.show .ring-prog{transition:stroke-dashoffset .3s cubic-bezier(.22,1,.36,1)!important}
+}
 </style>
 </head>
 <body>
@@ -437,13 +444,15 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 <div id="overlay" role="status" aria-live="assertive">
   <div class="loader">
     <div class="ring">
-      <svg viewBox="0 0 96 96" aria-hidden="true">
-        <defs><linearGradient id="lgrad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="var(--accent-400)"/><stop offset="1" stop-color="var(--accent-700)"/>
-        </linearGradient></defs>
-        <circle class="ring-track" cx="48" cy="48" r="38"/>
-        <circle class="ring-prog" id="lring" cx="48" cy="48" r="38"/>
-      </svg>
+      <div class="ring-spin">
+        <svg viewBox="0 0 96 96" aria-hidden="true">
+          <defs><linearGradient id="lgrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="var(--accent-400)"/><stop offset="1" stop-color="var(--accent-700)"/>
+          </linearGradient></defs>
+          <circle class="ring-track" cx="48" cy="48" r="38"/>
+          <circle class="ring-prog" id="lring" cx="48" cy="48" r="38"/>
+        </svg>
+      </div>
       <div class="ring-num">
         <span class="ring-pct"><b id="lpct">0</b><i>%</i></span>
         <span class="ring-dots"><i></i><i></i><i></i></span>
@@ -504,7 +513,7 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;

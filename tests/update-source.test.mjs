@@ -46,3 +46,11 @@ test('iPad users get touch-friendly layout and a share-sheet update fallback', (
   assert.match(html, /navigator\.share/)
   assert.match(html, /new File\(\[htmlBlob\],filename,\{type:'text\/html'\}\)/)
 })
+
+test('loader progress keeps a composited spinner and growing percent ring on iPad', () => {
+  assert.match(html, /<div class="ring-spin">\s*<svg viewBox="0 0 96 96" aria-hidden="true">/)
+  assert.match(html, /\.ring-spin\{[^}]*animation:ringspin 2\.4s linear infinite/)
+  assert.match(html, /\.ring-prog\{[^}]*transition:stroke-dashoffset \.3s cubic-bezier\(\.22,1,\.36,1\)/)
+  assert.match(html, /#overlay\.show \.ring-spin\{animation:ringspin 2\.4s linear infinite!important\}/)
+  assert.match(html, /#overlay\.show \.ring-prog\{transition:stroke-dashoffset \.3s cubic-bezier\(\.22,1,\.36,1\)!important\}/)
+})
