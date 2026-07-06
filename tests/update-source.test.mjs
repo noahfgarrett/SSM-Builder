@@ -7,6 +7,9 @@ import { test } from 'node:test'
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const html = readFileSync(resolve(rootDir, 'SSM-Builder.html'), 'utf8')
 const pkg = JSON.parse(readFileSync(resolve(rootDir, 'package.json'), 'utf8'))
+const pagesWorkflow = readFileSync(resolve(rootDir, '.github/workflows/deploy-pages.yml'), 'utf8')
+const manifest = readFileSync(resolve(rootDir, 'pwa/manifest.webmanifest'), 'utf8')
+const serviceWorker = readFileSync(resolve(rootDir, 'pwa/sw.js'), 'utf8')
 
 test('offline updater checks the SSM-Builder GitHub release once on boot', () => {
   assert.match(html, /<title>SSM Builder<\/title>/)
@@ -21,7 +24,9 @@ test('offline updater checks the SSM-Builder GitHub release once on boot', () =>
     /const UPDATE_RAW_BASE = 'https:\/\/raw\.githubusercontent\.com\/noahfgarrett\/SSM-Builder'/,
   )
   assert.match(html, /function checkForAppUpdate\(/)
-  assert.match(html, /checkForAppUpdate\(\)\.then\(info=>\{/)
+  assert.match(html, /function isPwaHostedApp\(\)/)
+  assert.match(html, /meta\[name="ssm-builder-pwa"\]\[content="true"\]/)
+  assert.match(html, /if\(!isPwaHostedApp\(\)\)checkForAppUpdate\(\)\.then\(info=>\{/)
   assert.doesNotMatch(html, /serviceWorker|manifest\.json|register\(/)
 })
 
@@ -50,18 +55,15 @@ test('clicking update downloads the tagged raw HTML file as a local HTML file', 
   assert.doesNotMatch(html, /Please try again from a fresh connection/)
 })
 
-test('desktop update downloads bypass the share sheet while iPad keeps a fallback', () => {
+test('standalone update downloads save directly without a share sheet fallback', () => {
   assert.match(html, /@media \(max-width:820px\)/)
   assert.match(html, /@media \(pointer:coarse\)/)
   assert.match(html, /function saveUpdateHtml\(htmlBlob,filename\)/)
-  assert.match(html, /function isIOSUpdateDevice\(\)/)
-  assert.match(html, /function shouldUseShareSheetForUpdate\(file\)/)
-  assert.match(html, /platform==='MacIntel'&&navigator\.maxTouchPoints>1/)
-  assert.match(html, /navigator\.canShare/)
-  assert.match(html, /navigator\.share/)
-  assert.match(html, /if\(shouldUseShareSheetForUpdate\(file\)\)\{/)
   assert.match(html, /saveBlob\(htmlBlob,filename,'text\/html'\)/)
-  assert.match(html, /new File\(\[htmlBlob\],filename,\{type:'text\/html'\}\)/)
+  assert.doesNotMatch(html, /navigator\.canShare/)
+  assert.doesNotMatch(html, /navigator\.share/)
+  assert.doesNotMatch(html, /shouldUseShareSheetForUpdate/)
+  assert.doesNotMatch(html, /isIOSUpdateDevice/)
 })
 
 test('loader progress keeps a composited spinner and growing percent ring on iPad', () => {
@@ -74,6 +76,7 @@ test('loader progress keeps a composited spinner and growing percent ring on iPa
 
 test('changelog modal is available from update tabs and the version link', () => {
   assert.match(html, /const CHANGELOG=\[/)
+  assert.match(html, /version:'1\.0\.5'/)
   assert.match(html, /version:'1\.0\.4'/)
   assert.match(html, /version:'1\.0\.3'/)
   assert.match(html, /version:'1\.0\.2'/)
@@ -89,13 +92,33 @@ test('changelog modal is available from update tabs and the version link', () =>
   assert.match(html, /\.change-entry\.major/)
   assert.match(html, /\.change-entry\.feature/)
   assert.match(html, /\.change-entry\.fix/)
+  assert.match(html, /\.update-card\.wide\{[^}]*height:min\(500px,calc\(100vh - 40px\)\)/)
+  assert.match(html, /#updatePanel:not\(\[hidden\]\),#changelogPanel:not\(\[hidden\]\)\{display:flex;flex:1;min-height:0;flex-direction:column\}/)
+  assert.match(html, /\.changelog-list\{[^}]*flex:1;min-height:0;max-height:none;overflow:auto/)
 })
 
 test('LotusWorks logo is embedded in the single HTML header', () => {
   assert.match(html, /<img class="lotus-logo" alt="LotusWorks" src="data:image\/png;base64,/)
-  assert.match(html, /\.lotus-logo\{order:-1;height:40px/)
+  assert.match(html, /\.lotus-logo\{order:-1;height:44px/)
   assert.match(html, /@media \(min-width:1081px\)\{\s*\.brand\{margin-left:calc\(\(100vw - 1080px\)\/-2\)\}/)
-  assert.match(html, /\.lotus-logo\{height:36px;max-width:118px/)
+  assert.match(html, /\.lotus-logo\{height:40px;max-width:130px/)
   assert.doesNotMatch(html, /LotusWorks_Logo_TP\.png/)
   assert.doesNotMatch(html, /__LOTUS_LOGO_DATA_URI__/)
+})
+
+test('GitHub Pages PWA publishing is manual-only', () => {
+  assert.match(pagesWorkflow, /on:\n  workflow_dispatch:/)
+  assert.doesNotMatch(pagesWorkflow, /^\s+push:/m)
+  assert.match(pagesWorkflow, /uses: actions\/configure-pages@v5/)
+  assert.match(pagesWorkflow, /uses: actions\/upload-pages-artifact@v4/)
+  assert.match(pagesWorkflow, /uses: actions\/deploy-pages@v4/)
+  assert.match(pagesWorkflow, /cp SSM-Builder\.html dist\/index\.html/)
+  assert.match(pagesWorkflow, /meta name="ssm-builder-pwa" content="true"/)
+  assert.match(pagesWorkflow, /replace\("<\/head>", pwa_head \+ "<\/head>", 1\)/)
+  assert.match(pagesWorkflow, /rpartition\("<\/body>"\)/)
+  assert.match(manifest, /"display": "standalone"/)
+  assert.match(manifest, /"start_url": "\.\/"/)
+  assert.match(serviceWorker, /const CACHE_NAME = 'ssm-builder-pwa-v1'/)
+  assert.match(serviceWorker, /fetch\(request\)/)
+  assert.match(serviceWorker, /caches\.match\('\.\/index\.html'\)/)
 })

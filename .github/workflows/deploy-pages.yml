@@ -1,0 +1,71 @@
+name: Deploy PWA to GitHub Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build PWA shell
+        run: |
+          mkdir -p dist
+          cp SSM-Builder.html dist/index.html
+          cp pwa/manifest.webmanifest dist/manifest.webmanifest
+          cp pwa/sw.js dist/sw.js
+          cp pwa/icon.svg dist/icon.svg
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("dist/index.html")
+          html = path.read_text(encoding="utf-8")
+          pwa_head = """<meta name="ssm-builder-pwa" content="true">
+          <meta name="theme-color" content="#222428">
+          <link rel="manifest" href="./manifest.webmanifest">
+          <link rel="icon" href="./icon.svg" type="image/svg+xml">
+          <link rel="apple-touch-icon" href="./icon.svg">
+          """
+          pwa_boot = """<script>
+          if('serviceWorker' in navigator){
+            window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+          }
+          </script>
+          """
+          html = html.replace("</head>", pwa_head + "</head>", 1)
+          before_body, body_close, after_body = html.rpartition("</body>")
+          if not body_close:
+            raise SystemExit("Missing </body> in SSM-Builder.html")
+          html = before_body + pwa_boot + body_close + after_body
+          path.write_text(html, encoding="utf-8")
+          PY
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

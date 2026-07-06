@@ -1,0 +1,18 @@
+{
+  "name": "SSM Builder",
+  "short_name": "SSM Builder",
+  "description": "Build electrical hierarchy outputs from spreadsheet tabs.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eceef0",
+  "theme_color": "#222428",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -46,3 +46,12 @@ For app changes that should reach users through the offline updater:
 Use the release notes style above for the GitHub release body.
 
 Docs-only changes do not need an app version bump or release unless the user specifically asks for one.
+
+## GitHub Pages PWA
+
+GitHub Pages is for the mobile PWA and must stay manually published.
+
+- Do not add `push`, `release`, or scheduled triggers to `.github/workflows/deploy-pages.yml`.
+- Only run **Deploy PWA to GitHub Pages** when Noah explicitly asks to update the PWA.
+- Normal HTML releases should not deploy Pages.
+- The Pages workflow copies `SSM-Builder.html` into a PWA shell and injects the `ssm-builder-pwa` marker so the standalone HTML update modal stays out of the PWA.
