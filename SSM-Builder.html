@@ -390,7 +390,8 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .dtable thead th{position:sticky;top:0;z-index:2;background:var(--surface-2);font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--ink-3);font-weight:700;white-space:nowrap}
 .dtable.cmp thead th.sub{top:34px;font-size:10px}
 .dtable.review thead th.sub{top:44px;font-size:10px}
-.source-head{height:44px;padding:10px 13px 8px!important;background:linear-gradient(180deg,var(--surface),var(--surface-2))!important;border-bottom:none!important;z-index:3!important;vertical-align:bottom!important}
+.source-head{height:44px;padding:10px 13px 8px!important;background:linear-gradient(180deg,var(--surface),var(--surface-2))!important;border-bottom:none!important;z-index:3!important;text-align:center!important;vertical-align:bottom!important}
+.dtable.review .source-head.ep,.dtable.review thead tr:nth-child(2) th:nth-child(4),.dtable.review tbody td:nth-child(4){box-shadow:inset 1px 0 0 rgba(148,163,184,.35)}
 .source-head span{position:relative;display:inline-flex;align-items:center;gap:7px;color:var(--ink);font-size:11px;font-weight:780;letter-spacing:.45px;text-transform:uppercase}
 .source-head span::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--accent-600);box-shadow:0 0 0 3px var(--accent-100)}
 .source-head span::after{content:"";position:absolute;left:14px;right:0;bottom:-8px;height:2px;border-radius:999px;background:var(--accent-300)}
@@ -582,13 +583,20 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.0.8';
+const APP_VERSION = '1.0.9';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.0.9',
+    date:'2026-07-06T15:25:48Z',
+    type:'fix',
+    stats:{fixes:1},
+    notes:`- Improved Review tab source headers and column separation`
+  },
   {
     version:'1.0.8',
     date:'2026-07-06T14:12:16Z',

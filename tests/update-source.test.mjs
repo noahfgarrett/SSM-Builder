@@ -79,6 +79,7 @@ test('loader progress keeps a composited spinner and growing percent ring on iPa
 
 test('changelog modal is available from update tabs and the version link', () => {
   assert.match(html, /const CHANGELOG=\[/)
+  assert.match(html, /version:'1\.0\.9'/)
   assert.match(html, /version:'1\.0\.8'/)
   assert.match(html, /version:'1\.0\.7'/)
   assert.match(html, /version:'1\.0\.6'/)
@@ -110,6 +111,8 @@ test('review tab groups columns by their source system', () => {
   assert.match(html, /<th colspan="2" class="source-head ep">/)
   assert.match(html, /<th colspan="2" class="source-head ep"><span>Easy Power<\/span><\/th>/)
   assert.match(html, /\.dtable\.review thead th\.sub\{[^}]*top:44px/)
+  assert.match(html, /\.source-head\{[^}]*text-align:center!important/)
+  assert.match(html, /\.dtable\.review \.source-head\.ep,\s*\.dtable\.review thead tr:nth-child\(2\) th:nth-child\(4\),\s*\.dtable\.review tbody td:nth-child\(4\)\{box-shadow:inset 1px 0 0 rgba\(148,163,184,\.35\)\}/)
   assert.match(html, /\.source-head span\{[^}]*font-size:11px/)
   assert.match(html, /\.source-head span::before/)
   assert.match(html, /\.source-head span::after/)
