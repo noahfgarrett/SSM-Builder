@@ -47,6 +47,9 @@ test('clicking update downloads the tagged raw HTML file as a local HTML file', 
   assert.match(html, /html\.includes\("const APP_VERSION = '"\+version\+"'"\)/)
   assert.match(html, /source:'raw'/)
   assert.match(html, /headers:\{Accept:'application\/octet-stream'\}/)
+  assert.match(html, /function versionedUpdateFilename\(version\)/)
+  assert.match(html, /return 'SSM-Builder-v'\+cleanVersion\+'\.html'/)
+  assert.match(html, /const filename=versionedUpdateFilename\(info\.version\)/)
   assert.match(html, /saveUpdateHtml\(htmlBlob,filename\)/)
   assert.match(html, /function saveUpdateFromUrl\(url,filename\)/)
   assert.match(html, /id="updateModal"/)
@@ -76,6 +79,7 @@ test('loader progress keeps a composited spinner and growing percent ring on iPa
 
 test('changelog modal is available from update tabs and the version link', () => {
   assert.match(html, /const CHANGELOG=\[/)
+  assert.match(html, /version:'1\.0\.7'/)
   assert.match(html, /version:'1\.0\.6'/)
   assert.match(html, /version:'1\.0\.5'/)
   assert.match(html, /version:'1\.0\.4'/)
@@ -100,8 +104,10 @@ test('changelog modal is available from update tabs and the version link', () =>
 
 test('LotusWorks logo is embedded in the single HTML header', () => {
   assert.match(html, /<img class="lotus-logo" alt="LotusWorks" src="data:image\/png;base64,/)
-  assert.match(html, /\.lotus-logo\{order:-1;height:66px/)
-  assert.match(html, /@media \(min-width:1081px\)\{\s*\.brand\{margin-left:calc\(\(100vw - 1080px\)\/-2\)\}/)
+  assert.match(html, /\.lotus-logo\{order:0;height:66px/)
+  assert.match(html, /--brand-main-left:max\(var\(--content-left\),var\(--brand-safe-left\)\)/)
+  assert.match(html, /\.brand \.mark\{position:absolute;left:var\(--brand-main-local\)/)
+  assert.match(html, /\.lotus-logo\{position:absolute;left:calc\(22px - \(\(100vw - 1080px\)\/2\)\)/)
   assert.match(html, /\.lotus-logo\{height:60px;max-width:195px/)
   assert.doesNotMatch(html, /LotusWorks_Logo_TP\.png/)
   assert.doesNotMatch(html, /__LOTUS_LOGO_DATA_URI__/)

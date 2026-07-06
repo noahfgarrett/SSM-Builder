@@ -37,11 +37,13 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .topbar::after{content:"";display:block;height:3px;background:repeating-linear-gradient(90deg,var(--accent) 0 26px,var(--panel-2) 26px 30px)}
 .topbar-in{max-width:1080px;margin:0 auto;padding:4px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand .mark{order:1}
+.brand>div:last-child{order:2;min-width:0}
 .mark{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;
   background:linear-gradient(150deg,var(--accent-500),var(--accent-700));
   box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 4px 12px -4px rgba(234,88,12,.7)}
 .mark .ic{width:20px;height:20px;color:#fff}
-.lotus-logo{order:-1;height:66px;width:auto;max-width:219px;object-fit:contain;display:block}
+.lotus-logo{order:0;height:66px;width:auto;max-width:219px;object-fit:contain;display:block}
 .brand h1{font-size:16.5px;margin:0;letter-spacing:-.2px;font-weight:650;white-space:nowrap}
 .brand .tag{display:block;font-size:11px;color:#aeb4bd;font-family:var(--mono);letter-spacing:.3px;margin-top:1px}
 .steps{margin-left:auto;display:flex;align-items:center;gap:6px}
@@ -457,7 +459,12 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
   .brand .tag{display:none}
 }
 @media (min-width:1081px){
-  .brand{margin-left:calc((100vw - 1080px)/-2)}
+  .topbar{--content-left:calc((100vw - 1080px)/2 + 22px);--brand-safe-left:190px;--brand-main-left:max(var(--content-left),var(--brand-safe-left));--brand-main-local:calc(var(--brand-main-left) - ((100vw - 1080px)/2))}
+  .topbar-in{position:relative;min-height:66px}
+  .brand{display:contents}
+  .lotus-logo{position:absolute;left:calc(22px - ((100vw - 1080px)/2));top:50%;transform:translateY(-50%)}
+  .brand .mark{position:absolute;left:var(--brand-main-local);top:50%;transform:translateY(-50%)}
+  .brand>div:last-child{position:absolute;left:calc(var(--brand-main-local) + 46px);top:50%;transform:translateY(-50%)}
 }
 @media (pointer:coarse){
   .btn,.chip,.tabbtn,.srow,.editcols{min-height:44px}
@@ -568,13 +575,21 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.0.6';
+const APP_VERSION = '1.0.7';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.0.7',
+    date:'2026-07-06T13:54:18Z',
+    type:'feature',
+    stats:{features:1,fixes:1},
+    notes:`- Added version numbers to downloaded update filenames
+- Improved the SSM Builder header alignment`
+  },
   {
     version:'1.0.6',
     date:'2026-07-06T13:28:42Z',
@@ -686,6 +701,10 @@ function getHtmlFilename(assetName,fallbackAssetName){
   if(fallbackAssetName)return fallbackAssetName;
   return String(assetName||'SSM-Builder.html').toLowerCase().endsWith('.gz')?assetName.slice(0,-3):assetName;
 }
+function versionedUpdateFilename(version){
+  const cleanVersion=String(version||APP_VERSION).replace(/^v/i,'').replace(/[^0-9A-Za-z._-]/g,'').trim()||APP_VERSION;
+  return 'SSM-Builder-v'+cleanVersion+'.html';
+}
 function getDecompressionStream(){
   return typeof DecompressionStream==='function'?DecompressionStream:null;
 }
@@ -722,18 +741,18 @@ function saveUpdateFromUrl(url,filename){
 }
 async function downloadUpdateFile(info){
   const plainName=getHtmlFilename(info.fallbackAssetName||info.assetName||'SSM-Builder.html');
+  const filename=versionedUpdateFilename(info.version);
   if(info.rawDownloadUrl){
     try{
       const htmlBlob=await fetchRawUpdateHtml(info.rawDownloadUrl,info.version);
-      await saveUpdateHtml(htmlBlob,plainName);
-      return {downloadedAssetName:plainName,savedFilename:plainName,usedCompressedAsset:false,source:'raw'};
+      await saveUpdateHtml(htmlBlob,filename);
+      return {downloadedAssetName:plainName,savedFilename:filename,usedCompressedAsset:false,source:'raw'};
     }catch(e){}
   }
   if(info.downloadKind==='gzip-html'&&canDecompressGzipInBrowser()){
     try{
       const compressedBlob=await fetchGitHubAssetBlob(info.assetApiUrl);
       const htmlBlob=await decompressGzipHtml(compressedBlob);
-      const filename=getHtmlFilename(info.assetName,info.fallbackAssetName);
       await saveUpdateHtml(htmlBlob,filename);
       return {downloadedAssetName:info.assetName,savedFilename:filename,usedCompressedAsset:true};
     }catch(e){}
@@ -741,7 +760,6 @@ async function downloadUpdateFile(info){
   const assetApiUrl=info.downloadKind==='gzip-html'?info.fallbackAssetApiUrl:info.assetApiUrl;
   const assetName=info.downloadKind==='gzip-html'?info.fallbackAssetName:info.assetName;
   if(!assetApiUrl||!assetName)throw new Error('No compatible update asset is available.');
-  const filename=getHtmlFilename(assetName);
   try{
     const htmlBlob=await fetchGitHubAssetBlob(assetApiUrl);
     await saveUpdateHtml(htmlBlob,filename);
