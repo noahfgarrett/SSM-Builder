@@ -389,6 +389,12 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .dtable th,.dtable td{text-align:left;padding:9px 13px;border-bottom:1px solid var(--border);vertical-align:top}
 .dtable thead th{position:sticky;top:0;z-index:2;background:var(--surface-2);font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--ink-3);font-weight:700;white-space:nowrap}
 .dtable.cmp thead th.sub{top:34px;font-size:10px}
+.dtable.review thead th.sub{top:44px;font-size:10px}
+.source-head{height:44px;padding:7px 13px!important;background:linear-gradient(180deg,var(--surface),var(--surface-2))!important;z-index:3!important;vertical-align:middle!important}
+.source-kicker{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:999px;padding:2px 8px;font-size:10px;font-weight:760;letter-spacing:.35px;text-transform:uppercase}
+.source-title{display:block;margin-top:3px;font-size:10px;color:var(--ink-3);font-weight:680;letter-spacing:.3px;text-transform:uppercase}
+.source-head.cable .source-kicker{background:var(--accent-100);border-color:var(--accent-200);color:var(--accent-700)}
+.source-head.ep .source-kicker{background:#eef3fb;border-color:#d6e3f5;color:#2f5fa8}
 .dtable tbody tr:last-child td{border-bottom:none}
 .dtable tbody tr:hover td{background:var(--surface-2)}
 .dtable td.mono{font-family:var(--mono);font-size:12.5px}
@@ -575,13 +581,21 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.0.7';
+const APP_VERSION = '1.0.8';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.0.8',
+    date:'2026-07-06T14:12:16Z',
+    type:'feature',
+    stats:{features:1,fixes:1},
+    notes:`- Added source labels to the Review tab columns
+- Fixed duplicated dependency values in comparison and SSM exports`
+  },
   {
     version:'1.0.7',
     date:'2026-07-06T13:54:18Z',
@@ -1518,6 +1532,12 @@ async function buildReview(report){
 }
 /* Resolve a stored SSM row [equip, parent, depOverride] to display values. */
 function ssmResolve(r){const e=r[0],par=r[1]||'',dep=r[2]!=null?r[2]:(depOf(e)||'');return {equip:e,parent:par,dep};}
+function sameRegisterValue(a,b){return clean(a).toLowerCase()===clean(b).toLowerCase();}
+function registerDepValue(parent,dep){
+  const d=clean(dep);
+  return d&&sameRegisterValue(parent,d)?'N/A':d;
+}
+function ssmRegisterResolve(r){const o=ssmResolve(r);return {...o,dep:registerDepValue(o.parent,o.dep)};}
 /* Compare the current SSM register against an imported "Current Working Copy". */
 async function buildComparison(report){
   S.compare=[];if(!S.wcRows)return;
@@ -1525,15 +1545,19 @@ async function buildComparison(report){
   const total=Math.max(1,S.ssmCombined.length+S.wcRows.length+S.ssmCombined.length);let cdone=0;
   const cur=new Map();for(const r of S.ssmCombined){const o=ssmResolve(r);cur.set(o.equip.toLowerCase(),o);cdone++;if(report)await maybeYield(report,.96+.03*(cdone/total),'Comparing working copy');}
   const wc=new Map();for(const o of S.wcRows)wc.set(o.equip.toLowerCase(),o);
-  const eq=(a,b)=>clean(a).toLowerCase()===clean(b).toLowerCase();
+  const eq=sameRegisterValue;
   const keys=new Set([...cur.keys(),...wc.keys()]);
   for(const k of keys){
     cdone++;if(report)await maybeYield(report,.96+.03*(cdone/total),'Comparing working copy');
     const a=cur.get(k),b=wc.get(k);let status;
-    if(a&&b)status=(eq(a.parent,b.parent)&&eq(a.dep,b.dep))?'match':'off';
+    const curParent=a?a.parent:'';
+    const curDep=a?registerDepValue(a.parent,a.dep):'';
+    const wcParent=b?b.parent:'';
+    const wcDep=b?registerDepValue(b.parent,b.dep):'';
+    if(a&&b)status=(eq(curParent,wcParent)&&eq(curDep,wcDep))?'match':'off';
     else status='nohit';
     S.compare.push({equip:a?a.equip:b.equip,
-      curParent:a?a.parent:'',curDep:a?a.dep:'',wcParent:b?b.parent:'',wcDep:b?b.dep:'',
+      curParent,curDep,wcParent,wcDep,
       inCur:!!a,inWc:!!b,status});
   }
   S.compare.sort((x,y)=>({off:0,nohit:1,match:2}[x.status]-{off:0,nohit:1,match:2}[y.status])||natCmp(x.equip,y.equip));
@@ -1708,12 +1732,15 @@ function renderReviewPanel(){
       <span class="stream-ind" id="revInd"></span>
       <span class="hint spacer" id="revCnt"></span>
     </div>
-    <div class="tablecard" id="revCard"><table class="dtable"><thead><tr>
-      <th class="sortable ${sc('load')}" data-sort="load">Load Name (To)</th>
-      <th class="sortable ${sc('panel')}" data-sort="panel">Panel (From)</th>
-      <th class="sortable ${sc('circuit')}" data-sort="circuit">Circuit_Number</th>
-      <th class="sortable ${sc('possible')}" data-sort="possible">Possible Matches</th>
-      <th class="sortable ${sc('pct')}" data-sort="pct">Best %</th>
+    <div class="tablecard" id="revCard"><table class="dtable review"><thead><tr>
+      <th colspan="3" class="source-head cable"><span class="source-kicker">Cable Schedule</span><span class="source-title">To / From</span></th>
+      <th colspan="2" class="source-head ep"><span class="source-kicker">Easy Power</span><span class="source-title">Source / Downstream / ID Name</span></th>
+    </tr><tr>
+      <th class="sortable sub ${sc('load')}" data-sort="load">Load Name (To)</th>
+      <th class="sortable sub ${sc('panel')}" data-sort="panel">Panel (From)</th>
+      <th class="sortable sub ${sc('circuit')}" data-sort="circuit">Circuit_Number</th>
+      <th class="sortable sub ${sc('possible')}" data-sort="possible">Possible Matches</th>
+      <th class="sortable sub ${sc('pct')}" data-sort="pct">Best %</th>
     </tr></thead><tbody id="revBody"></tbody></table></div>`;
   const rq=$('#rq');if(rq){let d;rq.addEventListener('input',()=>{clearTimeout(d);d=setTimeout(()=>{S.revSearch=rq.value;refreshReview();},220);});}
   const rqx=$('#rqx');if(rqx)rqx.onclick=()=>{S.revSearch='';const i=$('#rq');if(i){i.value='';i.focus();}$('#rqx').classList.remove('show');refreshReview();};
@@ -2023,7 +2050,7 @@ function addExtoSheet(wb,name,rows,used){
   const K=10,P=15,AM=38,W=39,aoa=[];
   aoa.push(new Array(W).fill(''));
   const head=new Array(W).fill('');head[K]='Equipment ID';head[P]='Closest Parent';head[AM]='Dependencies';aoa.push(head);
-  for(const r of filterSsm(rows)){const {equip,parent,dep}=ssmResolve(r);const row=new Array(W).fill('');row[K]=equip;row[P]=parent;row[AM]=dep||'N/A';aoa.push(row);}
+  for(const r of filterSsm(rows)){const {equip,parent,dep}=ssmRegisterResolve(r);const row=new Array(W).fill('');row[K]=equip;row[P]=parent;row[AM]=dep||'N/A';aoa.push(row);}
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   const cols=new Array(W).fill(0).map(()=>({wch:9}));cols[K]={wch:26};cols[P]={wch:26};cols[AM]={wch:24};ws['!cols']=cols;
   styleHeaderRow(ws,1);                                     // only the K/P/AM header cells are non-empty
@@ -2032,7 +2059,7 @@ function addExtoSheet(wb,name,rows,used){
 /* Plain SSM: Equipment ID, Closest Parent, Dependencies side by side (A/B/C). */
 function addSsm3Sheet(wb,name,rows,used){
   const aoa=[['Equipment ID','Closest Parent','Dependencies']];
-  for(const r of filterSsm(rows)){const {equip,parent,dep}=ssmResolve(r);aoa.push([equip,parent,dep||'N/A']);}
+  for(const r of filterSsm(rows)){const {equip,parent,dep}=ssmRegisterResolve(r);aoa.push([equip,parent,dep||'N/A']);}
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=[{wch:28},{wch:28},{wch:24}];
   styleHeaderRow(ws,0);setFilter(ws,0);

@@ -79,6 +79,7 @@ test('loader progress keeps a composited spinner and growing percent ring on iPa
 
 test('changelog modal is available from update tabs and the version link', () => {
   assert.match(html, /const CHANGELOG=\[/)
+  assert.match(html, /version:'1\.0\.8'/)
   assert.match(html, /version:'1\.0\.7'/)
   assert.match(html, /version:'1\.0\.6'/)
   assert.match(html, /version:'1\.0\.5'/)
@@ -100,6 +101,32 @@ test('changelog modal is available from update tabs and the version link', () =>
   assert.match(html, /\.update-card\.wide\{[^}]*height:min\(500px,calc\(100vh - 40px\)\)/)
   assert.match(html, /#updatePanel:not\(\[hidden\]\),#changelogPanel:not\(\[hidden\]\)\{display:flex;flex:1;min-height:0;flex-direction:column\}/)
   assert.match(html, /\.changelog-list\{[^}]*flex:1;min-height:0;max-height:none;overflow:auto/)
+})
+
+test('review tab groups columns by their source system', () => {
+  assert.match(html, /<table class="dtable review">/)
+  assert.match(html, /<th colspan="3" class="source-head cable">/)
+  assert.match(html, /<span class="source-kicker">Cable Schedule<\/span>/)
+  assert.match(html, /<span class="source-title">To \/ From<\/span>/)
+  assert.match(html, /<th colspan="2" class="source-head ep">/)
+  assert.match(html, /<span class="source-kicker">Easy Power<\/span>/)
+  assert.match(html, /<span class="source-title">Source \/ Downstream \/ ID Name<\/span>/)
+  assert.match(html, /\.dtable\.review thead th\.sub\{[^}]*top:44px/)
+  assert.match(html, /\.source-head\.cable \.source-kicker/)
+  assert.match(html, /\.source-head\.ep \.source-kicker/)
+})
+
+test('comparison and SSM exports replace duplicated dependency values with N/A', () => {
+  assert.match(html, /function sameRegisterValue\(a,b\)\{return clean\(a\)\.toLowerCase\(\)===clean\(b\)\.toLowerCase\(\);\}/)
+  assert.match(html, /function registerDepValue\(parent,dep\)\{/)
+  assert.match(html, /return d&&sameRegisterValue\(parent,d\)\?'N\/A':d;/)
+  assert.match(html, /function ssmRegisterResolve\(r\)\{const o=ssmResolve\(r\);return \{\.\.\.o,dep:registerDepValue\(o\.parent,o\.dep\)\};\}/)
+  assert.match(html, /const curParent=a\?a\.parent:''/)
+  assert.match(html, /const curDep=a\?registerDepValue\(a\.parent,a\.dep\):''/)
+  assert.match(html, /const wcParent=b\?b\.parent:''/)
+  assert.match(html, /const wcDep=b\?registerDepValue\(b\.parent,b\.dep\):''/)
+  assert.match(html, /status=\(eq\(curParent,wcParent\)&&eq\(curDep,wcDep\)\)\?'match':'off'/)
+  assert.equal((html.match(/const \{equip,parent,dep\}=ssmRegisterResolve\(r\)/g) || []).length, 2)
 })
 
 test('LotusWorks logo is embedded in the single HTML header', () => {
