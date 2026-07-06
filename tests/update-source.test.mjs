@@ -76,6 +76,7 @@ test('loader progress keeps a composited spinner and growing percent ring on iPa
 
 test('changelog modal is available from update tabs and the version link', () => {
   assert.match(html, /const CHANGELOG=\[/)
+  assert.match(html, /version:'1\.0\.6'/)
   assert.match(html, /version:'1\.0\.5'/)
   assert.match(html, /version:'1\.0\.4'/)
   assert.match(html, /version:'1\.0\.3'/)
@@ -99,9 +100,9 @@ test('changelog modal is available from update tabs and the version link', () =>
 
 test('LotusWorks logo is embedded in the single HTML header', () => {
   assert.match(html, /<img class="lotus-logo" alt="LotusWorks" src="data:image\/png;base64,/)
-  assert.match(html, /\.lotus-logo\{order:-1;height:44px/)
+  assert.match(html, /\.lotus-logo\{order:-1;height:66px/)
   assert.match(html, /@media \(min-width:1081px\)\{\s*\.brand\{margin-left:calc\(\(100vw - 1080px\)\/-2\)\}/)
-  assert.match(html, /\.lotus-logo\{height:40px;max-width:130px/)
+  assert.match(html, /\.lotus-logo\{height:60px;max-width:195px/)
   assert.doesNotMatch(html, /LotusWorks_Logo_TP\.png/)
   assert.doesNotMatch(html, /__LOTUS_LOGO_DATA_URI__/)
 })
