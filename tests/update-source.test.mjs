@@ -5,14 +5,16 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const html = readFileSync(resolve(rootDir, 'index.html'), 'utf8')
+const html = readFileSync(resolve(rootDir, 'SSM-Builder.html'), 'utf8')
 const pkg = JSON.parse(readFileSync(resolve(rootDir, 'package.json'), 'utf8'))
 
-test('offline updater checks the electrical-hierarchies GitHub release once on boot', () => {
+test('offline updater checks the SSM-Builder GitHub release once on boot', () => {
+  assert.match(html, /<title>SSM Builder<\/title>/)
+  assert.match(html, /<h1>SSM Builder<\/h1>/)
   assert.match(html, new RegExp(`const APP_VERSION = '${pkg.version.replaceAll('.', '\\.')}'`))
   assert.match(
     html,
-    /const UPDATE_RELEASE_API = 'https:\/\/api\.github\.com\/repos\/noahfgarrett\/electrical-hierarchies\/releases\/latest'/,
+    /const UPDATE_RELEASE_API = 'https:\/\/api\.github\.com\/repos\/noahfgarrett\/SSM-Builder\/releases\/latest'/,
   )
   assert.match(html, /function checkForAppUpdate\(/)
   assert.match(html, /checkForAppUpdate\(\)\.then\(info=>\{/)

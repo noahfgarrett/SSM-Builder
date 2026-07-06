@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Electrical Hierarchies</title>
+<title>SSM Builder</title>
 <style>
 :root{
   --bg:#eceef0; --bg-grid:#e3e6e9;
@@ -428,7 +428,7 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
   <div class="topbar-in">
     <div class="brand">
       <div class="mark" id="brandmark"></div>
-      <div><h1>Electrical Hierarchies</h1><span class="tag">source&nbsp;→&nbsp;downstream&nbsp;→&nbsp;id&nbsp;name</span></div>
+      <div><h1>SSM Builder</h1><span class="tag">source&nbsp;→&nbsp;downstream&nbsp;→&nbsp;id&nbsp;name</span></div>
     </div>
     <nav class="steps" id="steps" aria-label="Progress"></nav>
   </div>
@@ -505,7 +505,7 @@ const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,se
 const KEYSEP='\u0001';
 
 const APP_VERSION = '1.0.0';
-const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/electrical-hierarchies/releases/latest';
+const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 
@@ -553,7 +553,7 @@ async function checkForAppUpdate(){
 }
 function getHtmlFilename(assetName,fallbackAssetName){
   if(fallbackAssetName)return fallbackAssetName;
-  return String(assetName||'Electrical-Hierarchies.html').toLowerCase().endsWith('.gz')?assetName.slice(0,-3):assetName;
+  return String(assetName||'SSM-Builder.html').toLowerCase().endsWith('.gz')?assetName.slice(0,-3):assetName;
 }
 function getDecompressionStream(){
   return typeof DecompressionStream==='function'?DecompressionStream:null;
