@@ -113,12 +113,14 @@ test('LotusWorks logo is embedded in the single HTML header', () => {
   assert.doesNotMatch(html, /__LOTUS_LOGO_DATA_URI__/)
 })
 
-test('GitHub Pages PWA publishing follows releases', () => {
+test('GitHub Pages PWA publishing follows main app updates', () => {
   assert.match(pagesWorkflow, /on:\n  workflow_dispatch:/)
-  assert.match(pagesWorkflow, /\n  release:\n    types: \[published\]/)
-  assert.doesNotMatch(pagesWorkflow, /^\s+push:/m)
+  assert.match(pagesWorkflow, /\n  push:\n    branches: \[main\]\n    paths:/)
+  assert.match(pagesWorkflow, /- SSM-Builder\.html/)
+  assert.match(pagesWorkflow, /- pwa\/\*\*/)
+  assert.match(pagesWorkflow, /- \.github\/workflows\/deploy-pages\.yml/)
+  assert.doesNotMatch(pagesWorkflow, /^\s+release:/m)
   assert.doesNotMatch(pagesWorkflow, /^\s+schedule:/m)
-  assert.match(pagesWorkflow, /ref: \$\{\{ github\.event_name == 'release' && github\.event\.release\.tag_name \|\| github\.ref \}\}/)
   assert.match(pagesWorkflow, /uses: actions\/configure-pages@v5/)
   assert.match(pagesWorkflow, /uses: actions\/upload-pages-artifact@v4/)
   assert.match(pagesWorkflow, /uses: actions\/deploy-pages@v4/)

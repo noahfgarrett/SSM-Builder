@@ -42,7 +42,7 @@ For app changes that should reach users through the offline updater:
 6. Create a GitHub release tag like `v1.0.2` against the current commit.
 7. Attach the latest `SSM-Builder.html` as the release asset.
 8. Verify `/releases/latest` returns the new tag and includes `SSM-Builder.html`.
-9. Verify the **Deploy PWA to GitHub Pages** workflow completed for the release.
+9. Verify the **Deploy PWA to GitHub Pages** workflow completed for the `main` push.
 
 Use the release notes style above for the GitHub release body.
 
@@ -50,10 +50,10 @@ Docs-only changes do not need an app version bump or release unless the user spe
 
 ## GitHub Pages PWA
 
-GitHub Pages is for the mobile PWA and publishes automatically when a GitHub release is published.
+GitHub Pages is for the mobile PWA and publishes automatically when app/PWA files are pushed to `main`.
 
-- Keep the `release.published` trigger in `.github/workflows/deploy-pages.yml`.
-- Do not add `push` or scheduled triggers; Pages should update on releases, not every commit.
-- After publishing a normal HTML release, confirm the Pages deploy finished successfully.
-- Use manual `workflow_dispatch` only to backfill a release that was published before the automatic Pages trigger existed, or when Noah explicitly asks to redeploy the PWA.
+- Keep the `push` trigger scoped to `main` and app/PWA paths in `.github/workflows/deploy-pages.yml`.
+- Do not add scheduled triggers.
+- After pushing app changes to `main`, confirm the Pages deploy finished successfully.
+- Use manual `workflow_dispatch` only to backfill or when Noah explicitly asks to redeploy the PWA.
 - The Pages workflow copies `SSM-Builder.html` into a PWA shell and injects the `ssm-builder-pwa` marker so the standalone HTML update modal stays out of the PWA.
