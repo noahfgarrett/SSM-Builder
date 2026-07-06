@@ -578,18 +578,26 @@ const $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const raf=()=>new Promise(r=>requestAnimationFrame(()=>r()));
+function idleFrame(){return new Promise(r=>{if(window.requestIdleCallback)window.requestIdleCallback(()=>r(),{timeout:90});else setTimeout(()=>r(),24);});}
 const clean=v=>String(v==null?'':v).trim();
 function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]||''}</svg>`;}
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.1.1';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.1',
+    date:'2026-07-06T17:41:52Z',
+    type:'feature',
+    stats:{features:1},
+    notes:`- Improved Comparison tab performance for large working-copy reviews`
+  },
   {
     version:'1.1.0',
     date:'2026-07-06T17:12:38Z',
@@ -923,12 +931,13 @@ const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),override
   showSpares:true,showSpaces:true,showDeps:true,deps:new Map(),depDetail:new Map(),hasCable:false,
   epDetail:new Map(),epNameSet:new Set(),review:[],workCopy:null,wcRows:null,compare:[],tab:'tree',
   cmpFilter:'all',cmpSearch:'',revSearch:'',revSort:null,revMinPct:null,showStats:true,
-  viewCache:{tree:null,review:new Map(),compare:new Map()}};
+  viewCache:{tree:null,review:new Map(),compare:new Map(),compareRows:new Map()}};
 let _uid=0,_nid=0;
 const fileById=id=>S.files.find(f=>f.id===id);
 
 const RESULT_PANEL_CACHE_LIMIT=24;
-function clearResultCache(){S.viewCache={tree:null,review:new Map(),compare:new Map()};}
+let _cmpLazyTok=0,_cmpPrewarmTok=0;
+function clearResultCache(){_cmpLazyTok++;_cmpPrewarmTok++;S.viewCache={tree:null,review:new Map(),compare:new Map(),compareRows:new Map()};}
 function panelScroll(scrollSel){
   const el=scrollSel?$(scrollSel):null;
   return el?{top:el.scrollTop,left:el.scrollLeft}:null;
@@ -1853,24 +1862,120 @@ function renderReviewPanel(){
 }
 
 /* ---- Comparison panel (vs Current Working Copy) ---- */
+const CMP_FILTERS=['all','off','nohit','match'];
+const CMP_LAZY_CHUNK=700;
 const CMP_LABEL={match:'Matching',off:'Non-Matching',nohit:'No Comparison'};
 const CMP_ICON={match:'check-check',off:'triangle-alert',nohit:'minus'};
 function cmpCounts(){const c={off:0,nohit:0,match:0};S.compare.forEach(r=>c[r.status]++);return c;}
-function comparePanelCacheKey(){return ['compare',S.compare.length,S.cmpFilter,S.cmpSearch].join(KEYSEP);}
-function compareRows(){
-  const q=clean(S.cmpSearch).toLowerCase();
-  return S.compare.filter(r=>(S.cmpFilter==='all'||r.status===S.cmpFilter)&&(!q||r.equip.toLowerCase().includes(q)));
+function comparePanelCacheKeyFor(filter,search){return ['compare',S.compare.length,filter,search].join(KEYSEP);}
+function comparePanelCacheKey(){return comparePanelCacheKeyFor(S.cmpFilter,S.cmpSearch);}
+function compareRowsCacheKey(filter,search){return ['compareRows',S.compare.length,filter,search].join(KEYSEP);}
+function compareRowsFor(filter,search){
+  const q=clean(search).toLowerCase();
+  if(filter==='all'&&!q)return S.compare;
+  return S.compare.filter(r=>(filter==='all'||r.status===filter)&&(!q||r.equip.toLowerCase().includes(q)));
 }
+function compareRows(){return compareRowsFor(S.cmpFilter,S.cmpSearch);}
 function compareMakeCell(a,b){const diff=clean(a).toLowerCase()!==clean(b).toLowerCase();return `<td class="mono ${diff?'diff':''}">${esc(a)||'—'}</td><td class="mono ${diff?'diff':''}">${esc(b)||'—'}</td>`;}
 function compareMakeRow(r){
   const sub=r.status==='nohit'?`<span class="subtle">${r.inCur?'only in extracted':'only in working copy'}</span>`:'';
   return `<tr class="r-${r.status}"><td class="mono">${esc(r.equip)}</td><td><span class="cbadge ${r.status}">${ic(CMP_ICON[r.status])}${CMP_LABEL[r.status]}</span>${sub}</td>${compareMakeCell(r.curParent,r.wcParent)}${compareMakeCell(r.curDep,r.wcDep)}</tr>`;
 }
+function getCompareRowsCache(filter,search){
+  const key=compareRowsCacheKey(filter,search),hit=cacheGet(S.viewCache.compareRows,key);
+  if(hit)return hit;
+  const rows=compareRowsFor(filter,search),rec={key,filter,search,rows,total:rows.length,chunks:[],complete:false,building:false};
+  cacheSet(S.viewCache.compareRows,key,rec);
+  return rec;
+}
+function buildCompareChunk(rec,index){
+  if(rec.chunks[index]!=null)return rec.chunks[index];
+  const start=index*CMP_LAZY_CHUNK,end=Math.min(rec.total,start+CMP_LAZY_CHUNK);
+  let html='';
+  for(let i=start;i<end;i++)html+=compareMakeRow(rec.rows[i]);
+  rec.chunks[index]=html;
+  return html;
+}
+function attachCompareLazyRows(rec,key,el){
+  const tb=$('#cmpBody'),card=$('#cmpCard'),ind=$('#cmpInd');
+  if(!tb)return ()=>{};
+  const token=++_cmpLazyTok;
+  tb.dataset.lazyKey=rec.key;
+  if(!tb.dataset.lazyChunks)tb.dataset.lazyChunks='0';
+  const totalChunks=Math.ceil(rec.total/CMP_LAZY_CHUNK);
+  const updateStatus=()=>{
+    const shown=Math.min(rec.total,(+tb.dataset.lazyChunks||0)*CMP_LAZY_CHUNK);
+    if(ind)ind.textContent=shown<rec.total?`${shown.toLocaleString()} / ${rec.total.toLocaleString()}`:'';
+    if(card)card.classList.toggle('loading',shown<rec.total);
+  };
+  const appendNext=()=>{
+    if(token!==_cmpLazyTok)return;
+    let loaded=+tb.dataset.lazyChunks||0;
+    if(loaded>=totalChunks){updateStatus();return;}
+    tb.insertAdjacentHTML('beforeend',buildCompareChunk(rec,loaded));
+    loaded++;
+    tb.dataset.lazyChunks=String(loaded);
+    updateStatus();
+    rememberPanelCache('compare',key,el,'#cmpCard');
+  };
+  if(!rec.total){
+    tb.innerHTML=`<tr><td colspan="6" class="empty">No rows match.</td></tr>`;
+    tb.dataset.lazyChunks='0';
+    updateStatus();
+    rememberPanelCache('compare',key,el,'#cmpCard');
+    return appendNext;
+  }
+  const onScroll=()=>{if(!card)return;if(card.scrollTop+card.clientHeight>=card.scrollHeight-900)appendNext();};
+  if(card)card.addEventListener('scroll',onScroll,{passive:true});
+  updateStatus();
+  return appendNext;
+}
+function renderCompareRowsLazy(rec,key,el){
+  const tb=$('#cmpBody');if(!tb)return;
+  tb.innerHTML='';
+  tb.dataset.lazyChunks='0';
+  tb.dataset.lazyKey=rec.key;
+  const appendNext=attachCompareLazyRows(rec,key,el);
+  appendNext();
+}
+async function prewarmCompareRows(filter,search,token){
+  const rec=getCompareRowsCache(filter,search);
+  if(rec.complete||rec.building)return;
+  rec.building=true;
+  try{
+    const totalChunks=Math.ceil(rec.total/CMP_LAZY_CHUNK);
+    for(let i=0;i<totalChunks;i++){
+      if(token!==_cmpPrewarmTok)return;
+      buildCompareChunk(rec,i);
+      if(i%2===1)await idleFrame();
+    }
+    rec.complete=true;
+  }finally{rec.building=false;}
+}
+function scheduleComparePrewarm(activeFilter,search){
+  if(!S.wcRows||!S.compare.length)return;
+  const token=++_cmpPrewarmTok;
+  const order=[activeFilter,...CMP_FILTERS.filter(f=>f!==activeFilter)];
+  (async()=>{
+    for(const filter of order){
+      if(token!==_cmpPrewarmTok)return;
+      const rec=getCompareRowsCache(filter,search);
+      if(rec.total&&rec.chunks[0]==null)buildCompareChunk(rec,0);
+      await idleFrame();
+    }
+    for(const filter of order){
+      if(token!==_cmpPrewarmTok)return;
+      await prewarmCompareRows(filter,search,token);
+      await idleFrame();
+    }
+  })();
+}
 function refreshCompare(){
   if(!S.wcRows)return;
   const el=$('#panel-compare'),key=comparePanelCacheKey();
   markPanelCachePending(el,key);
-  streamRows('#cmpBody',compareRows(),compareMakeRow,`<tr><td colspan="6" class="empty">No rows match.</td></tr>`,{card:'#cmpCard',ind:'#cmpInd',onDone:()=>rememberPanelCache('compare',key,el,'#cmpCard')});
+  renderCompareRowsLazy(getCompareRowsCache(S.cmpFilter,S.cmpSearch),key,el);
+  scheduleComparePrewarm(S.cmpFilter,S.cmpSearch);
 }
 function wireComparePanel(){
   $$('[data-cf]').forEach(b=>b.onclick=()=>{S.cmpFilter=b.dataset.cf;renderComparePanel();});
@@ -1881,7 +1986,7 @@ function renderComparePanel(){
   const el=$('#panel-compare');if(!el)return;
   const key=comparePanelCacheKey();
   if(isPanelCacheLive(el,key))return;
-  if(restorePanelCache('compare',key,el,'#cmpCard')){wireComparePanel();return;}
+  if(restorePanelCache('compare',key,el,'#cmpCard')){wireComparePanel();attachCompareLazyRows(getCompareRowsCache(S.cmpFilter,S.cmpSearch),key,el);scheduleComparePrewarm(S.cmpFilter,S.cmpSearch);return;}
   bumpRender();
   markPanelCachePending(el,key);
   if(!S.wcRows){

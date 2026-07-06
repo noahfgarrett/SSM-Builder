@@ -79,6 +79,7 @@ test('loader progress keeps a composited spinner and growing percent ring on iPa
 
 test('changelog modal is available from update tabs and the version link', () => {
   assert.match(html, /const CHANGELOG=\[/)
+  assert.match(html, /version:'1\.1\.1'/)
   assert.match(html, /version:'1\.1\.0'/)
   assert.match(html, /version:'1\.0\.9'/)
   assert.match(html, /version:'1\.0\.8'/)
@@ -91,6 +92,7 @@ test('changelog modal is available from update tabs and the version link', () =>
   assert.match(html, /type:'feature'/)
   assert.match(html, /type:'fix'/)
   assert.match(html, /type:'major'/)
+  assert.match(html, /Improved Comparison tab performance for large working-copy reviews/)
   assert.match(html, /Added session caching so Hierarchy, Review, and Comparison tabs reopen instantly/)
   assert.match(html, /Fixed changelog entries crowding together instead of scrolling/)
   assert.match(html, /class="update-tab" id="changelogTab"/)
@@ -110,7 +112,7 @@ test('changelog modal is available from update tabs and the version link', () =>
 })
 
 test('result tabs use session-only in-memory panel caches', () => {
-  assert.match(html, /viewCache:\{tree:null,review:new Map\(\),compare:new Map\(\)\}/)
+  assert.match(html, /viewCache:\{tree:null,review:new Map\(\),compare:new Map\(\),compareRows:new Map\(\)\}/)
   assert.match(html, /const RESULT_PANEL_CACHE_LIMIT=24/)
   assert.match(html, /function clearResultCache\(\)/)
   assert.match(html, /function rememberPanelCache\(name,key,el,scrollSel\)/)
@@ -121,11 +123,33 @@ test('result tabs use session-only in-memory panel caches', () => {
   assert.match(html, /function comparePanelCacheKey\(\)/)
   assert.match(html, /if\(isPanelCacheLive\(el,key\)\)return;/)
   assert.match(html, /if\(restorePanelCache\('review',key,el,'#revCard'\)\)\{wireReviewPanel\(\);return;\}/)
-  assert.match(html, /if\(restorePanelCache\('compare',key,el,'#cmpCard'\)\)\{wireComparePanel\(\);return;\}/)
+  assert.match(html, /if\(restorePanelCache\('compare',key,el,'#cmpCard'\)\)\{wireComparePanel\(\);attachCompareLazyRows\(getCompareRowsCache\(S\.cmpFilter,S\.cmpSearch\),key,el\);scheduleComparePrewarm\(S\.cmpFilter,S\.cmpSearch\);return;\}/)
   assert.match(html, /onDone:\(\)=>rememberPanelCache\('review',key,el,'#revCard'\)/)
-  assert.match(html, /onDone:\(\)=>rememberPanelCache\('compare',key,el,'#cmpCard'\)/)
   assert.match(html, /clearResultCache\(\);/)
   assert.doesNotMatch(html, /localStorage|sessionStorage|indexedDB/)
+})
+
+test('comparison tab prewarms filter caches and lazily hydrates large row sets', () => {
+  assert.match(html, /const CMP_FILTERS=\['all','off','nohit','match'\]/)
+  assert.match(html, /const CMP_LAZY_CHUNK=700/)
+  assert.match(html, /function idleFrame\(\)/)
+  assert.match(html, /requestIdleCallback/)
+  assert.match(html, /function comparePanelCacheKeyFor\(filter,search\)/)
+  assert.match(html, /function compareRowsCacheKey\(filter,search\)/)
+  assert.match(html, /function getCompareRowsCache\(filter,search\)/)
+  assert.match(html, /function buildCompareChunk\(rec,index\)/)
+  assert.match(html, /function attachCompareLazyRows\(rec,key,el\)/)
+  assert.match(html, /function renderCompareRowsLazy\(rec,key,el\)/)
+  assert.match(html, /function prewarmCompareRows\(filter,search,token\)/)
+  assert.match(html, /function scheduleComparePrewarm\(activeFilter,search\)/)
+  assert.match(html, /const order=\[activeFilter,\.\.\.CMP_FILTERS\.filter\(f=>f!==activeFilter\)\]/)
+  assert.match(html, /if\(rec\.total&&rec\.chunks\[0\]==null\)buildCompareChunk\(rec,0\)/)
+  assert.match(html, /await prewarmCompareRows\(filter,search,token\)/)
+  assert.match(html, /renderCompareRowsLazy\(getCompareRowsCache\(S\.cmpFilter,S\.cmpSearch\),key,el\)/)
+  assert.match(html, /scheduleComparePrewarm\(S\.cmpFilter,S\.cmpSearch\)/)
+  assert.match(html, /tb\.dataset\.lazyChunks/)
+  assert.match(html, /card\.addEventListener\('scroll',onScroll,\{passive:true\}\)/)
+  assert.match(html, /rememberPanelCache\('compare',key,el,'#cmpCard'\)/)
 })
 
 test('review tab groups columns by their source system', () => {
