@@ -16,6 +16,10 @@ test('offline updater checks the SSM-Builder GitHub release once on boot', () =>
     html,
     /const UPDATE_RELEASE_API = 'https:\/\/api\.github\.com\/repos\/noahfgarrett\/SSM-Builder\/releases\/latest'/,
   )
+  assert.match(
+    html,
+    /const UPDATE_RAW_BASE = 'https:\/\/raw\.githubusercontent\.com\/noahfgarrett\/SSM-Builder'/,
+  )
   assert.match(html, /function checkForAppUpdate\(/)
   assert.match(html, /checkForAppUpdate\(\)\.then\(info=>\{/)
   assert.doesNotMatch(html, /serviceWorker|manifest\.json|register\(/)
@@ -29,13 +33,21 @@ test('update selection requires a plain HTML asset and can prefer a compressed a
   assert.match(html, /fallbackAssetApiUrl:htmlAsset\.url/)
 })
 
-test('clicking update downloads the GitHub release asset as a local HTML file', () => {
+test('clicking update downloads the tagged raw HTML file as a local HTML file', () => {
   assert.match(html, /function downloadUpdateFile\(info\)/)
+  assert.match(html, /function rawUpdateUrl\(tagName,assetName\)/)
+  assert.match(html, /rawDownloadUrl:rawUpdateUrl\(tagName,rawName\)/)
+  assert.match(html, /function fetchRawUpdateHtml\(rawUrl,version\)/)
+  assert.match(html, /headers:\{Accept:'text\/html,text\/plain,\*\/\*'\}/)
+  assert.match(html, /html\.includes\("const APP_VERSION = '"\+version\+"'"\)/)
+  assert.match(html, /source:'raw'/)
   assert.match(html, /headers:\{Accept:'application\/octet-stream'\}/)
   assert.match(html, /saveUpdateHtml\(htmlBlob,filename\)/)
+  assert.match(html, /function saveUpdateFromUrl\(url,filename\)/)
   assert.match(html, /id="updateModal"/)
   assert.match(html, /id="updateDownload"/)
   assert.doesNotMatch(html, /window\.open\([^)]*github/i)
+  assert.doesNotMatch(html, /Please try again from a fresh connection/)
 })
 
 test('iPad users get touch-friendly layout and a share-sheet update fallback', () => {
@@ -53,4 +65,28 @@ test('loader progress keeps a composited spinner and growing percent ring on iPa
   assert.match(html, /\.ring-prog\{[^}]*transition:stroke-dashoffset \.3s cubic-bezier\(\.22,1,\.36,1\)/)
   assert.match(html, /#overlay\.show \.ring-spin\{animation:ringspin 2\.4s linear infinite!important\}/)
   assert.match(html, /#overlay\.show \.ring-prog\{transition:stroke-dashoffset \.3s cubic-bezier\(\.22,1,\.36,1\)!important\}/)
+})
+
+test('changelog modal is available from update tabs and the version link', () => {
+  assert.match(html, /const CHANGELOG=\[/)
+  assert.match(html, /version:'1\.0\.2'/)
+  assert.match(html, /type:'feature'/)
+  assert.match(html, /type:'fix'/)
+  assert.match(html, /type:'major'/)
+  assert.match(html, /class="update-tab" id="changelogTab"/)
+  assert.match(html, /id="changelogPanel"/)
+  assert.match(html, /function renderChangelog\(info\)/)
+  assert.match(html, /function showAppChangelog\(\)/)
+  assert.match(html, /id="versionLink"/)
+  assert.match(html, /\$\('#versionLink'\)\.onclick=showAppChangelog/)
+  assert.match(html, /\.change-entry\.major/)
+  assert.match(html, /\.change-entry\.feature/)
+  assert.match(html, /\.change-entry\.fix/)
+})
+
+test('LotusWorks logo is embedded in the single HTML header', () => {
+  assert.match(html, /<img class="lotus-logo" alt="LotusWorks" src="data:image\/png;base64,/)
+  assert.match(html, /\.lotus-logo\{height:30px/)
+  assert.doesNotMatch(html, /LotusWorks_Logo_TP\.png/)
+  assert.doesNotMatch(html, /__LOTUS_LOGO_DATA_URI__/)
 })
