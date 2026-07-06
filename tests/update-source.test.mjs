@@ -79,6 +79,7 @@ test('loader progress keeps a composited spinner and growing percent ring on iPa
 
 test('changelog modal is available from update tabs and the version link', () => {
   assert.match(html, /const CHANGELOG=\[/)
+  assert.match(html, /version:'1\.1\.0'/)
   assert.match(html, /version:'1\.0\.9'/)
   assert.match(html, /version:'1\.0\.8'/)
   assert.match(html, /version:'1\.0\.7'/)
@@ -90,6 +91,7 @@ test('changelog modal is available from update tabs and the version link', () =>
   assert.match(html, /type:'feature'/)
   assert.match(html, /type:'fix'/)
   assert.match(html, /type:'major'/)
+  assert.match(html, /Added session caching so Hierarchy, Review, and Comparison tabs reopen instantly/)
   assert.match(html, /Fixed changelog entries crowding together instead of scrolling/)
   assert.match(html, /class="update-tab" id="changelogTab"/)
   assert.match(html, /id="changelogPanel"/)
@@ -105,6 +107,25 @@ test('changelog modal is available from update tabs and the version link', () =>
   assert.match(html, /\.changelog-intro\{[^}]*flex:0 0 auto/)
   assert.match(html, /\.changelog-list\{[^}]*flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-x:hidden/)
   assert.match(html, /\.change-entry\{[^}]*flex:0 0 auto/)
+})
+
+test('result tabs use session-only in-memory panel caches', () => {
+  assert.match(html, /viewCache:\{tree:null,review:new Map\(\),compare:new Map\(\)\}/)
+  assert.match(html, /const RESULT_PANEL_CACHE_LIMIT=24/)
+  assert.match(html, /function clearResultCache\(\)/)
+  assert.match(html, /function rememberPanelCache\(name,key,el,scrollSel\)/)
+  assert.match(html, /function restorePanelCache\(name,key,el,scrollSel\)/)
+  assert.match(html, /function rememberTreePanel\(\)/)
+  assert.match(html, /function restoreTreePanel\(\)/)
+  assert.match(html, /function reviewPanelCacheKey\(\)/)
+  assert.match(html, /function comparePanelCacheKey\(\)/)
+  assert.match(html, /if\(isPanelCacheLive\(el,key\)\)return;/)
+  assert.match(html, /if\(restorePanelCache\('review',key,el,'#revCard'\)\)\{wireReviewPanel\(\);return;\}/)
+  assert.match(html, /if\(restorePanelCache\('compare',key,el,'#cmpCard'\)\)\{wireComparePanel\(\);return;\}/)
+  assert.match(html, /onDone:\(\)=>rememberPanelCache\('review',key,el,'#revCard'\)/)
+  assert.match(html, /onDone:\(\)=>rememberPanelCache\('compare',key,el,'#cmpCard'\)/)
+  assert.match(html, /clearResultCache\(\);/)
+  assert.doesNotMatch(html, /localStorage|sessionStorage|indexedDB/)
 })
 
 test('review tab groups columns by their source system', () => {

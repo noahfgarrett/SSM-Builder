@@ -583,13 +583,20 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.0.9';
+const APP_VERSION = '1.1.0';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.0',
+    date:'2026-07-06T17:12:38Z',
+    type:'feature',
+    stats:{features:1},
+    notes:`- Added session caching so Hierarchy, Review, and Comparison tabs reopen instantly`
+  },
   {
     version:'1.0.9',
     date:'2026-07-06T15:25:48Z',
@@ -915,9 +922,61 @@ const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),override
   roots:[],sheets:[],ssmCombined:[],nodeById:new Map(),stats:null,search:'',idOnly:false,
   showSpares:true,showSpaces:true,showDeps:true,deps:new Map(),depDetail:new Map(),hasCable:false,
   epDetail:new Map(),epNameSet:new Set(),review:[],workCopy:null,wcRows:null,compare:[],tab:'tree',
-  cmpFilter:'all',cmpSearch:'',revSearch:'',revSort:null,revMinPct:null,showStats:true};
+  cmpFilter:'all',cmpSearch:'',revSearch:'',revSort:null,revMinPct:null,showStats:true,
+  viewCache:{tree:null,review:new Map(),compare:new Map()}};
 let _uid=0,_nid=0;
 const fileById=id=>S.files.find(f=>f.id===id);
+
+const RESULT_PANEL_CACHE_LIMIT=24;
+function clearResultCache(){S.viewCache={tree:null,review:new Map(),compare:new Map()};}
+function panelScroll(scrollSel){
+  const el=scrollSel?$(scrollSel):null;
+  return el?{top:el.scrollTop,left:el.scrollLeft}:null;
+}
+function restoreScroll(scrollSel,scroll){
+  if(!scrollSel||!scroll)return;
+  requestAnimationFrame(()=>{const el=$(scrollSel);if(el){el.scrollTop=scroll.top||0;el.scrollLeft=scroll.left||0;}});
+}
+function cacheSet(map,key,value){
+  if(map.has(key))map.delete(key);
+  map.set(key,value);
+  while(map.size>RESULT_PANEL_CACHE_LIMIT)map.delete(map.keys().next().value);
+}
+function cacheGet(map,key){
+  if(!map.has(key))return null;
+  const value=map.get(key);
+  map.delete(key);map.set(key,value);
+  return value;
+}
+function markPanelCachePending(el,key){if(el){el.dataset.cacheKey=key;el.dataset.cacheReady='0';}}
+function markPanelCacheReady(el,key){if(el){el.dataset.cacheKey=key;el.dataset.cacheReady='1';}}
+function isPanelCacheLive(el,key){return !!(el&&el.dataset.cacheReady==='1'&&el.dataset.cacheKey===key&&el.innerHTML);}
+function rememberPanelCache(name,key,el,scrollSel){
+  const map=S.viewCache[name];if(!map||!el)return;
+  markPanelCacheReady(el,key);
+  cacheSet(map,key,{html:el.innerHTML,scroll:panelScroll(scrollSel)});
+}
+function restorePanelCache(name,key,el,scrollSel){
+  const map=S.viewCache[name],hit=map&&cacheGet(map,key);
+  if(!hit||!el)return false;
+  el.innerHTML=hit.html;
+  markPanelCacheReady(el,key);
+  restoreScroll(scrollSel,hit.scroll);
+  return true;
+}
+function treePanelCacheKey(){return ['tree',S.search,S.idOnly,S.showSpares,S.showSpaces,S.showDeps,S.roots.length].join(KEYSEP);}
+function rememberTreePanel(){
+  const el=$('#panel-tree');if(!el)return;
+  S.viewCache.tree={key:treePanelCacheKey(),html:el.innerHTML,scroll:panelScroll('.treecard')};
+}
+function restoreTreePanel(){
+  const el=$('#panel-tree'),hit=S.viewCache.tree;
+  if(!el||!hit||hit.key!==treePanelCacheKey())return false;
+  el.innerHTML=hit.html;
+  restoreScroll('.treecard',hit.scroll);
+  wireTree($('#tree'));
+  return true;
+}
 
 /* ---- tag classifiers ---- */
 const tagTokens=n=>String(n).toUpperCase().split(/[^A-Z]+/).filter(Boolean);
@@ -1443,6 +1502,7 @@ async function buildDeps(tick){
 }
 async function buildHierarchy(){
   const keys=[...S.selected];if(!keys.length)return;
+  clearResultCache();
   await withLoading('Building hierarchy',keys.length+' tab'+(keys.length!==1?'s':''),async(report)=>{
     resetYield();
     // weight progress by actual rows so the bar tracks reality on big datasets
@@ -1624,12 +1684,14 @@ function renderResult(){
       <button class="btn spacer" id="startover">${ic('rotate-ccw')}Start over</button>
     </div>
   </section>`;
-  wireResult();renderTreeCollapsed();
+  const treeRestored=restoreTreePanel();
+  wireResult();
+  if(!treeRestored)renderTreeCollapsed();
   if(S.tab==='review')renderReviewPanel();else if(S.tab==='compare')renderComparePanel();
 }
 function wireResult(){
   $('#backSheets').onclick=()=>go('sheets');
-  $('#startover').onclick=()=>{S.roots=[];S.stats=null;S.workCopy=null;S.wcRows=null;go('upload');};
+  $('#startover').onclick=()=>{S.roots=[];S.stats=null;S.workCopy=null;S.wcRows=null;clearResultCache();go('upload');};
   $('#expandAll').onclick=()=>expandAll();
   $('#collapseAll').onclick=()=>collapseAll();
   $('#expHier').onclick=exportHierarchyXlsx;
@@ -1656,11 +1718,23 @@ function wireResult(){
   togChip('tgDeps',()=>S.showDeps,v=>S.showDeps=v,()=>$('#tree').classList.toggle('hide-deps',!S.showDeps));
 }
 function setTab(t){
+  if(t===S.tab)return;
+  cacheActiveResultPanel();
   S.tab=t;bumpRender();
   $$('.tabbtn').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   [['tree','#panel-tree'],['review','#panel-review'],['compare','#panel-compare']].forEach(([k,sel])=>{const el=$(sel);if(el)el.hidden=k!==t;});
   if(t==='review')renderReviewPanel();
   else if(t==='compare')renderComparePanel();
+}
+function cacheActiveResultPanel(){
+  if(S.tab==='tree')rememberTreePanel();
+  else if(S.tab==='review'){
+    const el=$('#panel-review'),key=reviewPanelCacheKey();
+    if(isPanelCacheLive(el,key))rememberPanelCache('review',key,el,'#revCard');
+  }else if(S.tab==='compare'){
+    const el=$('#panel-compare'),key=comparePanelCacheKey();
+    if(isPanelCacheLive(el,key))rememberPanelCache('compare',key,el,'#cmpCard');
+  }
 }
 function setQInfo(html){const e=$('#qinfo');if(e)e.innerHTML=html||'';}
 
@@ -1675,12 +1749,12 @@ async function streamRows(sel,items,makeRow,emptyHtml,ui){
   const card=ui&&ui.card?$(ui.card):null;
   const setInd=t=>{if(ui&&ui.ind){const e=$(ui.ind);if(e)e.textContent=t||'';}};
   const stop=()=>{if(card)card.classList.remove('loading');setInd('');};
-  if(!items.length){tb.innerHTML=emptyHtml;stop();return;}
+  if(!items.length){tb.innerHTML=emptyHtml;if(ui&&ui.onDone)ui.onDone();stop();return;}
   const N=items.length,FIRST=Math.min(N,200),CHUNK=600;
   let i=0,buf='';
   for(;i<FIRST;i++)buf+=makeRow(items[i]);
   tb.innerHTML=buf;                         // instant, usable table
-  if(i>=N){stop();return;}
+  if(i>=N){if(ui&&ui.onDone)ui.onDone();stop();return;}
   if(card)card.classList.add('loading');setInd(`${i.toLocaleString()} / ${N.toLocaleString()}`);
   while(i<N){
     await raf();
@@ -1691,6 +1765,7 @@ async function streamRows(sel,items,makeRow,emptyHtml,ui){
     tb.insertAdjacentHTML('beforeend',frag);
     setInd(`${i.toLocaleString()} / ${N.toLocaleString()}`);
   }
+  if(ui&&ui.onDone)ui.onDone();
   stop();
 }
 
@@ -1720,18 +1795,39 @@ function reviewRows(){
   });
   return sortReviewList(rows);
 }
+function reviewPanelCacheKey(){
+  const sort=S.revSort?S.revSort.col+':'+S.revSort.dir:'';
+  return ['review',S.review.length,S.revSearch,S.revMinPct==null?'':S.revMinPct,sort].join(KEYSEP);
+}
 function refreshReview(){
   if(!S.review.length)return;
+  const el=$('#panel-review'),key=reviewPanelCacheKey();
+  markPanelCachePending(el,key);
   const rows=reviewRows();
   $$('#panel-review th.sortable').forEach(th=>{th.classList.remove('sort-asc','sort-desc');const s=S.revSort;if(s&&s.col===th.dataset.sort)th.classList.add(s.dir==='asc'?'sort-asc':'sort-desc');});
   const cnt=$('#revCnt');if(cnt)cnt.textContent=`${S.review.length} unmatched${rows.length!==S.review.length?` · ${rows.length} shown`:''}`;
-  streamRows('#revBody',rows,reviewMakeRow,`<tr><td colspan="5" class="empty">No rows match the filter.</td></tr>`,{card:'#revCard',ind:'#revInd'});
+  streamRows('#revBody',rows,reviewMakeRow,`<tr><td colspan="5" class="empty">No rows match the filter.</td></tr>`,{card:'#revCard',ind:'#revInd',onDone:()=>rememberPanelCache('review',key,el,'#revCard')});
+}
+function wireReviewPanel(){
+  const rq=$('#rq');if(rq){let d;rq.addEventListener('input',()=>{clearTimeout(d);d=setTimeout(()=>{S.revSearch=rq.value;refreshReview();},220);});}
+  const rqx=$('#rqx');if(rqx)rqx.onclick=()=>{S.revSearch='';const i=$('#rq');if(i){i.value='';i.focus();}$('#rqx').classList.remove('show');refreshReview();};
+  const rp=$('#rpct');if(rp){let d;rp.addEventListener('input',()=>{clearTimeout(d);d=setTimeout(()=>{const v=parseFloat(rp.value);S.revMinPct=(rp.value===''||isNaN(v))?null:Math.max(0,Math.min(100,v));refreshReview();},220);});}
+  $$('#panel-review th.sortable').forEach(th=>th.onclick=()=>{
+    const col=th.dataset.sort,s=S.revSort;
+    S.revSort=(!s||s.col!==col)?{col,dir:'asc'}:(s.dir==='asc'?{col,dir:'desc'}:null);
+    refreshReview();
+  });
 }
 function renderReviewPanel(){
   const el=$('#panel-review');if(!el)return;
+  const key=reviewPanelCacheKey();
+  if(isPanelCacheLive(el,key))return;
+  if(restorePanelCache('review',key,el,'#revCard')){wireReviewPanel();return;}
   bumpRender();
+  markPanelCachePending(el,key);
   if(!S.review.length){
-    el.innerHTML=`<div class="note info">${ic('circle-check')}<div>Every Cable Schedule load has an exact match in the Easy Power import.</div></div>`;return;
+    el.innerHTML=`<div class="note info">${ic('circle-check')}<div>Every Cable Schedule load has an exact match in the Easy Power import.</div></div>`;
+    rememberPanelCache('review',key,el,null);return;
   }
   const sc=col=>S.revSort&&S.revSort.col===col?(S.revSort.dir==='asc'?'sort-asc':'sort-desc'):'';
   el.innerHTML=`
@@ -1752,14 +1848,7 @@ function renderReviewPanel(){
       <th class="sortable sub ${sc('possible')}" data-sort="possible">Possible Matches</th>
       <th class="sortable sub ${sc('pct')}" data-sort="pct">Best %</th>
     </tr></thead><tbody id="revBody"></tbody></table></div>`;
-  const rq=$('#rq');if(rq){let d;rq.addEventListener('input',()=>{clearTimeout(d);d=setTimeout(()=>{S.revSearch=rq.value;refreshReview();},220);});}
-  const rqx=$('#rqx');if(rqx)rqx.onclick=()=>{S.revSearch='';const i=$('#rq');if(i){i.value='';i.focus();}$('#rqx').classList.remove('show');refreshReview();};
-  const rp=$('#rpct');if(rp){let d;rp.addEventListener('input',()=>{clearTimeout(d);d=setTimeout(()=>{const v=parseFloat(rp.value);S.revMinPct=(rp.value===''||isNaN(v))?null:Math.max(0,Math.min(100,v));refreshReview();},220);});}
-  $$('#panel-review th.sortable').forEach(th=>th.onclick=()=>{
-    const col=th.dataset.sort,s=S.revSort;
-    S.revSort=(!s||s.col!==col)?{col,dir:'asc'}:(s.dir==='asc'?{col,dir:'desc'}:null);
-    refreshReview();
-  });
+  wireReviewPanel();
   refreshReview();
 }
 
@@ -1767,17 +1856,39 @@ function renderReviewPanel(){
 const CMP_LABEL={match:'Matching',off:'Non-Matching',nohit:'No Comparison'};
 const CMP_ICON={match:'check-check',off:'triangle-alert',nohit:'minus'};
 function cmpCounts(){const c={off:0,nohit:0,match:0};S.compare.forEach(r=>c[r.status]++);return c;}
+function comparePanelCacheKey(){return ['compare',S.compare.length,S.cmpFilter,S.cmpSearch].join(KEYSEP);}
+function compareRows(){
+  const q=clean(S.cmpSearch).toLowerCase();
+  return S.compare.filter(r=>(S.cmpFilter==='all'||r.status===S.cmpFilter)&&(!q||r.equip.toLowerCase().includes(q)));
+}
+function compareMakeCell(a,b){const diff=clean(a).toLowerCase()!==clean(b).toLowerCase();return `<td class="mono ${diff?'diff':''}">${esc(a)||'—'}</td><td class="mono ${diff?'diff':''}">${esc(b)||'—'}</td>`;}
+function compareMakeRow(r){
+  const sub=r.status==='nohit'?`<span class="subtle">${r.inCur?'only in extracted':'only in working copy'}</span>`:'';
+  return `<tr class="r-${r.status}"><td class="mono">${esc(r.equip)}</td><td><span class="cbadge ${r.status}">${ic(CMP_ICON[r.status])}${CMP_LABEL[r.status]}</span>${sub}</td>${compareMakeCell(r.curParent,r.wcParent)}${compareMakeCell(r.curDep,r.wcDep)}</tr>`;
+}
+function refreshCompare(){
+  if(!S.wcRows)return;
+  const el=$('#panel-compare'),key=comparePanelCacheKey();
+  markPanelCachePending(el,key);
+  streamRows('#cmpBody',compareRows(),compareMakeRow,`<tr><td colspan="6" class="empty">No rows match.</td></tr>`,{card:'#cmpCard',ind:'#cmpInd',onDone:()=>rememberPanelCache('compare',key,el,'#cmpCard')});
+}
+function wireComparePanel(){
+  $$('[data-cf]').forEach(b=>b.onclick=()=>{S.cmpFilter=b.dataset.cf;renderComparePanel();});
+  const cq=$('#cq');if(cq){let d;cq.addEventListener('input',()=>{clearTimeout(d);d=setTimeout(()=>{S.cmpSearch=cq.value;renderComparePanel();},250);});}
+  const cqx=$('#cqx');if(cqx)cqx.onclick=()=>{S.cmpSearch='';renderComparePanel();};
+}
 function renderComparePanel(){
   const el=$('#panel-compare');if(!el)return;
+  const key=comparePanelCacheKey();
+  if(isPanelCacheLive(el,key))return;
+  if(restorePanelCache('compare',key,el,'#cmpCard')){wireComparePanel();return;}
   bumpRender();
-  if(!S.wcRows){el.innerHTML=`<div class="note info">${ic('info')}<div>Import a <b>Current Working Copy</b> on the first screen to compare Equipment ID, Closest Parent and Dependency.</div></div>`;return;}
-  const c=cmpCounts(),q=clean(S.cmpSearch).toLowerCase();
-  const rows=S.compare.filter(r=>(S.cmpFilter==='all'||r.status===S.cmpFilter)&&(!q||r.equip.toLowerCase().includes(q)));
-  const cell=(a,b)=>{const diff=clean(a).toLowerCase()!==clean(b).toLowerCase();return `<td class="mono ${diff?'diff':''}">${esc(a)||'—'}</td><td class="mono ${diff?'diff':''}">${esc(b)||'—'}</td>`;};
-  const makeRow=r=>{
-    const sub=r.status==='nohit'?`<span class="subtle">${r.inCur?'only in extracted':'only in working copy'}</span>`:'';
-    return `<tr class="r-${r.status}"><td class="mono">${esc(r.equip)}</td><td><span class="cbadge ${r.status}">${ic(CMP_ICON[r.status])}${CMP_LABEL[r.status]}</span>${sub}</td>${cell(r.curParent,r.wcParent)}${cell(r.curDep,r.wcDep)}</tr>`;
-  };
+  markPanelCachePending(el,key);
+  if(!S.wcRows){
+    el.innerHTML=`<div class="note info">${ic('info')}<div>Import a <b>Current Working Copy</b> on the first screen to compare Equipment ID, Closest Parent and Dependency.</div></div>`;
+    rememberPanelCache('compare',key,el,null);return;
+  }
+  const c=cmpCounts();
   const fchip=(k,label,n)=>`<button class="chip sm ${S.cmpFilter===k?'on':''}" data-cf="${k}">${esc(label)}${n!=null?` <span class="tabcount">${n}</span>`:''}</button>`;
   el.innerHTML=`
     <div class="note info cmp-legend" style="margin-bottom:12px">${ic('git-branch')}<div>Comparing the <b>extracted</b> register against <b>${esc(S.workCopy?S.workCopy.name:'working copy')}</b>.
@@ -1790,10 +1901,8 @@ function renderComparePanel(){
       <div class="search" style="margin-left:auto">${ic('search')}<input id="cq" type="text" placeholder="Find equipment…" value="${esc(S.cmpSearch)}" autocomplete="off"><button class="qx ${S.cmpSearch?'show':''}" id="cqx">${ic('x')}</button></div>
     </div>
     <div class="tablecard" id="cmpCard"><table class="dtable cmp"><thead><tr><th rowspan="2">Equipment ID</th><th rowspan="2">Status</th><th colspan="2">Closest Parent</th><th colspan="2">Dependency</th></tr><tr><th class="sub">Extracted</th><th class="sub">Working copy</th><th class="sub">Extracted</th><th class="sub">Working copy</th></tr></thead><tbody id="cmpBody"></tbody></table></div>`;
-  $$('[data-cf]').forEach(b=>b.onclick=()=>{S.cmpFilter=b.dataset.cf;renderComparePanel();});
-  const cq=$('#cq');if(cq){let d;cq.addEventListener('input',()=>{clearTimeout(d);d=setTimeout(()=>{S.cmpSearch=cq.value;renderComparePanel();},250);});}
-  const cqx=$('#cqx');if(cqx)cqx.onclick=()=>{S.cmpSearch='';renderComparePanel();};
-  streamRows('#cmpBody',rows,makeRow,`<tr><td colspan="6" class="empty">No rows match.</td></tr>`,{card:'#cmpCard',ind:'#cmpInd'});
+  wireComparePanel();
+  refreshCompare();
 }
 
 /* ---- tree rendering ---- */
@@ -1833,6 +1942,10 @@ function makeNode(node,prefixArr,isLast,isRoot){
   wrap.innerHTML=rowInner(node,prefixArr,isLast,isRoot,'')+'<div class="kids" hidden></div>';
   return wrap;
 }
+function wireTree(tree){
+  if(!tree||tree._wired)return;
+  tree.addEventListener('click',onTreeClick);tree.addEventListener('keydown',onTreeKey);tree._wired=true;
+}
 function renderTreeCollapsed(){
   cancelExpand();
   const tree=$('#tree');tree.innerHTML='';
@@ -1842,7 +1955,8 @@ function renderTreeCollapsed(){
   tree.appendChild(frag);
   tree.classList.toggle('hide-deps',!S.showDeps);
   if(!roots.length)tree.innerHTML=`<div class="note info" style="margin:6px">${ic('info')}<div>Nothing to show with the current Spares/Spaces toggles.</div></div>`;
-  if(!tree._wired){tree.addEventListener('click',onTreeClick);tree.addEventListener('keydown',onTreeKey);tree._wired=true;}
+  wireTree(tree);
+  rememberTreePanel();
 }
 function childPrefix(node){return node._isRoot?[]:node._prefix.concat(!node._isLast);}
 function expandNode(row,node){
