@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
+import { runInNewContext } from 'node:vm'
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const html = readFileSync(resolve(rootDir, 'SSM-Builder.html'), 'utf8')
@@ -10,6 +11,9 @@ const pkg = JSON.parse(readFileSync(resolve(rootDir, 'package.json'), 'utf8'))
 const pagesWorkflow = readFileSync(resolve(rootDir, '.github/workflows/deploy-pages.yml'), 'utf8')
 const manifest = readFileSync(resolve(rootDir, 'pwa/manifest.webmanifest'), 'utf8')
 const serviceWorker = readFileSync(resolve(rootDir, 'pwa/sw.js'), 'utf8')
+const customScript = html
+  .slice(html.lastIndexOf('<script>') + '<script>'.length, html.lastIndexOf('</script>'))
+  .replace(/\/\* ---- boot ---- \*\/[\s\S]*$/, '')
 
 test('offline updater checks the SSM-Builder GitHub release once on boot', () => {
   assert.match(html, /<title>SSM Builder<\/title>/)
@@ -41,7 +45,7 @@ test('update selection requires a plain HTML asset and can prefer a compressed a
 test('clicking update downloads the tagged raw HTML file as a local HTML file', () => {
   assert.match(html, /function downloadUpdateFile\(info\)/)
   assert.match(html, /function rawUpdateUrl\(tagName,assetName\)/)
-  assert.match(html, /rawDownloadUrl:rawUpdateUrl\(tagName,rawName\)/)
+  assert.match(html, /rawDownloadUrl:rawUpdateUrl\(tagName,'SSM-Builder\.html'\)/)
   assert.match(html, /function fetchRawUpdateHtml\(rawUrl,version\)/)
   assert.match(html, /headers:\{Accept:'text\/html,text\/plain,\*\/\*'\}/)
   assert.match(html, /html\.includes\("const APP_VERSION = '"\+version\+"'"\)/)
@@ -79,6 +83,7 @@ test('loader progress keeps a composited spinner and growing percent ring on iPa
 
 test('changelog modal is available from update tabs and the version link', () => {
   assert.match(html, /const CHANGELOG=\[/)
+  assert.match(html, /version:'1\.1\.3'/)
   assert.match(html, /version:'1\.1\.2'/)
   assert.match(html, /version:'1\.1\.1'/)
   assert.match(html, /version:'1\.1\.0'/)
@@ -94,6 +99,9 @@ test('changelog modal is available from update tabs and the version link', () =>
   assert.match(html, /type:'fix'/)
   assert.match(html, /type:'major'/)
   assert.match(html, /Improved large-dataset tab performance with virtualized Review and Comparison tables/)
+  assert.match(html, /Added Point Master Database instruments to hierarchy views, details, and SSM exports/)
+  assert.match(html, /Added full-screen views for Hierarchy, Review, and Comparison tabs/)
+  assert.match(html, /Removed trailing -P suffixes from equipment tags/)
   assert.match(html, /Improved Comparison tab performance for large working-copy reviews/)
   assert.match(html, /Added session caching so Hierarchy, Review, and Comparison tabs reopen instantly/)
   assert.match(html, /Fixed changelog entries crowding together instead of scrolling/)
@@ -111,6 +119,109 @@ test('changelog modal is available from update tabs and the version link', () =>
   assert.match(html, /\.changelog-intro\{[^}]*flex:0 0 auto/)
   assert.match(html, /\.changelog-list\{[^}]*flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-x:hidden/)
   assert.match(html, /\.change-entry\{[^}]*flex:0 0 auto/)
+})
+
+test('equipment tags consistently drop a trailing -P suffix', () => {
+  assert.match(html, /const cleanTag=v=>clean\(v\)\.replace\(\/-P\$\/i,''\)/)
+  assert.match(html, /const s=cleanTag\(row\[cols\.source\]\)/)
+  assert.match(html, /const id=cleanTag\(row\[cols\.idName\]\)/)
+  assert.match(html, /const loadDesc=cols\.loadDesc>=0\?cleanTag\(row\[cols\.loadDesc\]\):''/)
+  assert.match(html, /const load=cleanTag\(aoa\[i\]\[loadC\]\)/)
+  assert.match(html, /rows\.push\(\{equip:cleanTag\(aoa\[i\]\[cols\.equip\]\)/)
+})
+
+test('PMD workbooks auto-select INSTALL PMD and add instrument hierarchy metadata', () => {
+  assert.match(html, /pmdSel:new Set\(\)/)
+  assert.match(html, /pmdRows:\[\],pmdPanels:\[\],pmdLinks:\[\],pmdPanelMap:new Map\(\),pmdDetail:new Map\(\)/)
+  assert.match(html, /const PMD_SHEET_NAME='installpmd'/)
+  assert.match(html, /function isPmdFile\(file\)/)
+  assert.match(html, /function pmdInfo\(key\)/)
+  assert.match(html, /function isPmdSheet\(key\)/)
+  assert.match(html, /if\(normH\(s\)===PMD_SHEET_NAME\)S\.pmdSel\.add\(key\)/)
+  assert.match(html, /PANEL → INSTRUMENT TAG/)
+  assert.match(html, /function buildPmd\(tick\)/)
+  assert.match(html, /function pmdPanelKey\(value\)/)
+  assert.match(html, /replace\(\/\[-_\]\(\?:NPS\|CPS\)\$\/i,''\)/)
+  assert.match(html, /function attachPmdInstruments\(root\)/)
+  assert.match(html, /isInstrument:true,description:rec\.description,pmdKey:rec\.key/)
+  assert.match(html, /pmdPanel:panel\.panel/)
+  assert.match(html, /title="\$\{esc\(node\.description\)\}"/)
+  assert.match(html, /const pmd=node\.pmdKey\?S\.pmdDetail\.get\(node\.pmdKey\):null/)
+  assert.match(html, /fld\('PMD Panel Match',node\.pmdPanel\)/)
+  for (const label of ['CARD', 'POINT POSITION', 'POINT TYPE', 'P&ID', 'Location', 'RELEASE']) {
+    assert.match(html, new RegExp(`\\['${label.replace('&', '\\&')}'`))
+  }
+})
+
+test('PMD rows are appended to SSM data with panels before instruments', () => {
+  assert.match(html, /function appendPmdSsmRows\(rows,includeUnmatched\)/)
+  assert.match(html, /const panelRows=links\.map\(link=>\[link\.loadName,'',existingDeps\.get\(link\.loadKey\)\|\|depOf\(link\.loadName\)\|\|depOf\(link\.panel\)\|\|''\]\)/)
+  assert.match(html, /const instrumentRows=links\.flatMap\(link=>link\.instruments\.map\(rec=>\[rec\.tag,link\.loadName,''\]\)\)/)
+  assert.match(html, /return \[\.\.\.base,\.\.\.panelRows,\.\.\.instrumentRows\]/)
+  assert.match(html, /S\.ssmCombined=appendPmdSsmRows\(ssmCombined,true\)/)
+  assert.match(html, /sh\.ssmRows=appendPmdSsmRows\(sh\.ssmRows,false\)/)
+})
+
+test('PMD base panels link to both CPS and NPS load variants with duplicated instruments', () => {
+  const value = runInNewContext(`${customScript}
+    const fixturePanel={key:pmdPanelKey('RIO-1-09'),panel:'RIO-1-09',instruments:[
+      {key:'fit',tag:cleanTag('FIT-100-P'),description:'Flow indicator'},
+      {key:'lsh',tag:'LSH-200',description:'High level switch'}
+    ]};
+    S.pmdPanels=[fixturePanel];S.pmdPanelMap=new Map([[fixturePanel.key,fixturePanel]]);
+    const cps={name:'RIO-1-09_CPS',kids:new Map(),isId:false,isLoad:true};
+    const nps={name:'RIO-1-09-NPS',kids:new Map(),isId:false,isLoad:true};
+    const root={name:'__root__',kids:new Map([['cps',cps],['nps',nps]])};
+    const attached=attachPmdInstruments(root);
+    const built=buildRoots(root);
+    const exported=appendPmdSsmRows([
+      ['RIO-1-09_CPS','', 'MTR-1'],
+      ['RIO-1-09-NPS','', 'MTR-2']
+    ],true);
+    JSON.stringify({
+      keys:[pmdPanelKey('RIO-1-09'),pmdPanelKey('RIO-1-09_CPS'),pmdPanelKey('RIO-1-09-NPS')],
+      attached,links:S.pmdLinks.length,
+      cpsPanel:cps.pmdPanel,npsPanel:nps.pmdPanel,
+      cpsKids:[...cps.kids.keys()],npsKids:[...nps.kids.keys()],
+      builtInstrument:built[0].children[0].isInstrument,
+      exported
+    });
+  `, { console, setTimeout, clearTimeout })
+  const result = JSON.parse(value)
+
+  assert.deepEqual(result.keys, ['rio109', 'rio109', 'rio109'])
+  assert.equal(result.attached, 4)
+  assert.equal(result.links, 2)
+  assert.equal(result.cpsPanel, 'RIO-1-09')
+  assert.equal(result.npsPanel, 'RIO-1-09')
+  assert.deepEqual(result.cpsKids, ['FIT-100', 'LSH-200'])
+  assert.deepEqual(result.npsKids, ['FIT-100', 'LSH-200'])
+  assert.equal(result.builtInstrument, true)
+  assert.deepEqual(result.exported, [
+    ['RIO-1-09_CPS', '', 'MTR-1'],
+    ['RIO-1-09-NPS', '', 'MTR-2'],
+    ['FIT-100', 'RIO-1-09_CPS', ''],
+    ['LSH-200', 'RIO-1-09_CPS', ''],
+    ['FIT-100', 'RIO-1-09-NPS', ''],
+    ['LSH-200', 'RIO-1-09-NPS', ''],
+  ])
+})
+
+test('every result tab supports an iPad-friendly full-screen view', () => {
+  assert.match(html, /id="fullscreenToggle"/)
+  assert.match(html, /function setResultFullscreen\(on\)/)
+  assert.match(html, /resultShell\.classList\.toggle\('fullscreen',on\)/)
+  assert.match(html, /document\.body\.classList\.toggle\('result-fullscreen',on\)/)
+  assert.match(html, /#resultShell\.fullscreen\{position:fixed;inset:0/)
+  assert.match(html, /#resultShell\.fullscreen \.panel:not\(\[hidden\]\)\{display:flex/)
+  assert.match(html, /#resultShell\.fullscreen \.treecard,#resultShell\.fullscreen \.tablecard\{max-height:none;flex:1/)
+  assert.match(html, /if\(e\.key==='Escape'&&S\.resultFullscreen\)setResultFullscreen\(false\)/)
+})
+
+test('release packaging uses a versioned HTML asset while raw updates use the canonical source file', () => {
+  assert.match(html, /rawDownloadUrl:rawUpdateUrl\(tagName,'SSM-Builder\.html'\)/)
+  assert.match(html, /function versionedUpdateFilename\(version\)/)
+  assert.match(html, /return 'SSM-Builder-v'\+cleanVersion\+'\.html'/)
 })
 
 test('result tabs use session-only in-memory panel caches', () => {

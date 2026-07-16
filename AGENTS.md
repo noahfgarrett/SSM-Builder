@@ -40,8 +40,8 @@ For app changes that should reach users through the offline updater:
 4. Browser-check `SSM-Builder.html`, including an iPad-sized viewport when the change affects layout, loading, downloads, or touch behavior.
 5. Commit and push to `main`.
 6. Create a GitHub release tag like `v1.0.2` against the current commit.
-7. Attach the latest `SSM-Builder.html` as the release asset.
-8. Verify `/releases/latest` returns the new tag and includes `SSM-Builder.html`.
+7. Attach the latest HTML as a versioned release asset such as `SSM-Builder-v1.1.3.html`.
+8. Verify `/releases/latest` returns the new tag and includes the versioned HTML asset.
 9. Verify the **Deploy PWA to GitHub Pages** workflow completed for the `main` push.
 
 Use the release notes style above for the GitHub release body.

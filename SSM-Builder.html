@@ -339,6 +339,9 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .ficon.cable{background:var(--tint);color:var(--accent-700)}
 .cablegrp .grp-h{background:var(--tint)}
 .srow.cable .sname .ic{color:var(--accent-600)}
+.ficon.pmd{background:#eef3fb;color:#2f5fa8;border-color:#d6e3f5}
+.pmdgrp .grp-h{background:#f4f7fc}
+.srow.pmd .sname .ic{color:#2f5fa8}
 
 /* cable schedule detail drawer */
 .drawer-back{position:fixed;inset:0;z-index:68;background:rgba(28,30,34,.38);backdrop-filter:blur(2px);display:none}
@@ -372,6 +375,15 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .tabcount{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--surface-3);color:var(--ink-2);font-family:var(--mono);font-size:11px;font-weight:700}
 .tabbtn.on .tabcount{background:var(--accent-100);color:var(--accent-700)}
 .panel[hidden]{display:none}
+.fullbtn{width:36px;height:36px;padding:0;display:grid;place-items:center;flex:0 0 auto}
+.fullbtn .ic{width:17px;height:17px}
+body.result-fullscreen{overflow:hidden}
+#resultShell.fullscreen{position:fixed;inset:0;z-index:66;background:var(--bg);padding:14px 18px;display:flex;flex-direction:column;overflow:hidden}
+#resultShell.fullscreen .statwrap,#resultShell.fullscreen .result-foot{display:none}
+#resultShell.fullscreen #statsToggle{display:none}
+#resultShell.fullscreen .tabbar{flex:0 0 auto;margin-bottom:12px;background:var(--bg)}
+#resultShell.fullscreen .panel:not([hidden]){display:flex;flex:1;min-height:0;flex-direction:column}
+#resultShell.fullscreen .treecard,#resultShell.fullscreen .tablecard{max-height:none;flex:1;min-height:0}
 
 /* data tables (review / comparison) */
 .tablecard{border:1px solid var(--border);border-radius:12px;overflow:auto;background:var(--surface);max-height:62vh;position:relative}
@@ -442,6 +454,10 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .marker.load{color:var(--accent-600)}
 .marker.load .ic{width:13px;height:13px}
 .dep.dep-load{background:var(--accent-100);border-color:var(--accent-200);color:var(--accent-700)}
+.dep.pmd-link{background:#eef3fb;border-color:#d6e3f5;color:#2f5fa8}
+.row.is-instrument .lbl{color:#2f5fa8}
+.marker.instrument{color:#2f5fa8}
+.marker.instrument .ic{width:13px;height:13px}
 
 /* current working copy import */
 .wc-import{margin-top:14px;border:1px dashed var(--border);border-radius:12px;padding:14px 16px;background:var(--surface)}
@@ -467,6 +483,7 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
   .tools{margin-left:0;width:100%}
   .search{max-width:none}
   .brand .tag{display:none}
+  #resultShell.fullscreen{padding:10px}
 }
 @media (min-width:1081px){
   .topbar{--content-left:calc((100vw - 1080px)/2 + 22px);--brand-safe-left:190px;--brand-main-left:max(var(--content-left),var(--brand-safe-left));--brand-main-local:calc(var(--brand-main-left) - ((100vw - 1080px)/2))}
@@ -575,6 +592,8 @@ var XLSX={};function make_xlsx_lib(a){a.version="0.18.5",a.style_version="1.2.0"
 <script>
 "use strict";
 const ICONS = {"upload":"<path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline points=\"17 8 12 3 7 8\"/><line x1=\"12\" x2=\"12\" y1=\"3\" y2=\"15\"/>","file-spreadsheet":"<path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"/><path d=\"M8 13h2\"/><path d=\"M14 13h2\"/><path d=\"M8 17h2\"/><path d=\"M14 17h2\"/>","file-text":"<path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"/><path d=\"M10 9H8\"/><path d=\"M16 13H8\"/><path d=\"M16 17H8\"/>","file":"<path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"/>","x":"<path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/>","check":"<path d=\"M20 6 9 17l-5-5\"/>","check-check":"<path d=\"M18 6 7 17l-5-5\"/><path d=\"m22 10-7.5 7.5L13 16\"/>","search":"<circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/>","chevron-right":"<path d=\"m9 18 6-6-6-6\"/>","chevron-down":"<path d=\"m6 9 6 6 6-6\"/>","chevrons-down":"<path d=\"m7 6 5 5 5-5\"/><path d=\"m7 13 5 5 5-5\"/>","chevrons-up":"<path d=\"m17 11-5-5-5 5\"/><path d=\"m17 18-5-5-5 5\"/>","download":"<path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline points=\"7 10 12 15 17 10\"/><line x1=\"12\" x2=\"12\" y1=\"15\" y2=\"3\"/>","arrow-left":"<path d=\"m12 19-7-7 7-7\"/><path d=\"M19 12H5\"/>","zap":"<path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"/>","git-branch":"<line x1=\"6\" x2=\"6\" y1=\"3\" y2=\"15\"/><circle cx=\"18\" cy=\"6\" r=\"3\"/><circle cx=\"6\" cy=\"18\" r=\"3\"/><path d=\"M18 9a9 9 0 0 1-9 9\"/>","tag":"<path d=\"M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z\"/><circle cx=\"7.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>","layers":"<path d=\"m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z\"/><path d=\"m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65\"/><path d=\"m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65\"/>","list-tree":"<path d=\"M21 12h-8\"/><path d=\"M21 6H8\"/><path d=\"M21 18h-8\"/><path d=\"M3 6v4c0 1.1.9 2 2 2h3\"/><path d=\"M3 10v6c0 1.1.9 2 2 2h3\"/>","network":"<rect x=\"16\" y=\"16\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"2\" y=\"16\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"9\" y=\"2\" width=\"6\" height=\"6\" rx=\"1\"/><path d=\"M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3\"/><path d=\"M12 12V8\"/>","hash":"<line x1=\"4\" x2=\"20\" y1=\"9\" y2=\"9\"/><line x1=\"4\" x2=\"20\" y1=\"15\" y2=\"15\"/><line x1=\"10\" x2=\"8\" y1=\"3\" y2=\"21\"/><line x1=\"16\" x2=\"14\" y1=\"3\" y2=\"21\"/>","triangle-alert":"<path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\"/><path d=\"M12 9v4\"/><path d=\"M12 17h.01\"/>","loader-circle":"<path d=\"M21 12a9 9 0 1 1-6.219-8.56\"/>","table-2":"<path d=\"M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18\"/>","sliders-horizontal":"<line x1=\"21\" x2=\"14\" y1=\"4\" y2=\"4\"/><line x1=\"10\" x2=\"3\" y1=\"4\" y2=\"4\"/><line x1=\"21\" x2=\"12\" y1=\"12\" y2=\"12\"/><line x1=\"8\" x2=\"3\" y1=\"12\" y2=\"12\"/><line x1=\"21\" x2=\"16\" y1=\"20\" y2=\"20\"/><line x1=\"12\" x2=\"3\" y1=\"20\" y2=\"20\"/><line x1=\"14\" x2=\"14\" y1=\"2\" y2=\"6\"/><line x1=\"8\" x2=\"8\" y1=\"10\" y2=\"14\"/><line x1=\"16\" x2=\"16\" y1=\"18\" y2=\"22\"/>","info":"<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 16v-4\"/><path d=\"M12 8h.01\"/>","trash-2":"<path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" x2=\"10\" y1=\"11\" y2=\"17\"/><line x1=\"14\" x2=\"14\" y1=\"11\" y2=\"17\"/>","file-json":"<path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"/><path d=\"M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1\"/><path d=\"M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1\"/>","file-down":"<path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"/><path d=\"M12 18v-6\"/><path d=\"m9 15 3 3 3-3\"/>","plus":"<path d=\"M5 12h14\"/><path d=\"M12 5v14\"/>","rotate-ccw":"<path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path d=\"M3 3v5h5\"/>","circle-check":"<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m9 12 2 2 4-4\"/>","folder-tree":"<path d=\"M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z\"/><path d=\"M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z\"/><path d=\"M3 5a2 2 0 0 0 2 2h3\"/><path d=\"M3 3v13a2 2 0 0 0 2 2h3\"/>","corner-down-right":"<polyline points=\"15 10 20 15 15 20\"/><path d=\"M4 4v7a4 4 0 0 0 4 4h12\"/>","filter":"<polygon points=\"22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3\"/>","minus":"<path d=\"M5 12h14\"/>","database":"<ellipse cx=\"12\" cy=\"5\" rx=\"9\" ry=\"3\"/><path d=\"M3 5V19A9 3 0 0 0 21 19V5\"/><path d=\"M3 12A9 3 0 0 0 21 12\"/>","square-stack":"<path d=\"M4 10c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2\"/><path d=\"M10 16c-1.1 0-2-.9-2-2v-4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2\"/><rect width=\"8\" height=\"8\" x=\"14\" y=\"14\" rx=\"2\"/>","spline":"<circle cx=\"19\" cy=\"5\" r=\"2\"/><circle cx=\"5\" cy=\"19\" r=\"2\"/><path d=\"M5 17A12 12 0 0 1 17 5\"/>","panel-left-close":"<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path d=\"M9 3v18\"/><path d=\"m16 15-3-3 3-3\"/>"};
+ICONS['maximize-2']='<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/>';
+ICONS['minimize-2']='<polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" x2="21" y1="10" y2="3"/><line x1="3" x2="10" y1="21" y2="14"/>';
 const $=(s,r=document)=>r.querySelector(s);
 const $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -582,17 +601,28 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const raf=()=>new Promise(r=>requestAnimationFrame(()=>r()));
 function idleFrame(){return new Promise(r=>{if(window.requestIdleCallback)window.requestIdleCallback(()=>r(),{timeout:90});else setTimeout(()=>r(),24);});}
 const clean=v=>String(v==null?'':v).trim();
+const cleanTag=v=>clean(v).replace(/-P$/i,'');
 function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]||''}</svg>`;}
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.2';
+const APP_VERSION = '1.1.3';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.3',
+    date:'2026-07-16T12:00:00Z',
+    type:'feature',
+    stats:{features:4},
+    notes:`- Added Point Master Database instruments to hierarchy views, details, and SSM exports
+- Added full-screen views for Hierarchy, Review, and Comparison tabs
+- Removed trailing -P suffixes from equipment tags
+- Improved downloaded HTML packages with versioned filenames`
+  },
   {
     version:'1.1.2',
     date:'2026-07-06T17:52:44Z',
@@ -737,8 +767,7 @@ async function checkForAppUpdate(){
     if(!isNewerVersion(remoteVersion,APP_VERSION))return null;
     const selected=selectUpdateAsset(release.assets);
     if(!selected)return null;
-    const rawName=selected.fallbackAssetName||getHtmlFilename(selected.assetName);
-    return {version:remoteVersion,tagName,releaseNotes:release.body||'',rawDownloadUrl:rawUpdateUrl(tagName,rawName),...selected};
+    return {version:remoteVersion,tagName,releaseNotes:release.body||'',rawDownloadUrl:rawUpdateUrl(tagName,'SSM-Builder.html'),...selected};
   }catch(e){return null;}
   finally{if(timer)clearTimeout(timer);}
 }
@@ -935,11 +964,13 @@ function initUpdateCheck(){
   if(!isPwaHostedApp())checkForAppUpdate().then(info=>{if(info)showUpdateModal(info);});
 }
 
-const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),override:{},aoaCache:new Map(),
+const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:new Set(),override:{},aoaCache:new Map(),
   roots:[],sheets:[],ssmCombined:[],nodeById:new Map(),stats:null,search:'',idOnly:false,
   showSpares:true,showSpaces:true,showDeps:true,deps:new Map(),depDetail:new Map(),hasCable:false,
+  pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
   epDetail:new Map(),epNameSet:new Set(),review:[],workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
   cmpFilter:'all',cmpSearch:'',revSearch:'',revSort:null,revMinPct:null,showStats:true,
+  resultFullscreen:false,
   viewCache:{tree:null,review:new Map(),reviewRows:new Map(),compare:new Map(),compareRows:new Map()}};
 let _uid=0,_nid=0;
 const fileById=id=>S.files.find(f=>f.id===id);
@@ -1037,7 +1068,7 @@ function treeSig(n){return n.name+'\u0002'+n.children.map(treeSig).join('\u0003'
 function dedupRoots(roots){const seen=new Set(),out=[];for(const r of roots){const s=treeSig(r);if(!seen.has(s)){seen.add(s);out.push(r);}}return out;}
 function nodeHidden(n){return (n.isSpare&&!S.showSpares)||(n.isSpace&&!S.showSpaces);}
 function kidsOf(n){return n.children.filter(c=>!nodeHidden(c));}
-function depOf(name){return S.deps.get(clean(name).toLowerCase())||'';}
+function depOf(name){return S.deps.get(cleanTag(name).toLowerCase())||'';}
 /* dependency shown for a node: load descriptions point at the equipment above them,
    everything else uses the cable schedule. */
 function nodeDep(n){return n.isLoad?(n.parent?n.parent.name:''):depOf(n.name);}
@@ -1184,6 +1215,38 @@ function cableInfo(key){
 }
 function isCableSheet(key){return isCableName(key.split(KEYSEP)[1])||!!cableInfo(key);}
 function cableRowCount(key){const ci=cableInfo(key);if(!ci)return sheetRowCount(key);const {aoa}=getAoa(key);return Math.max(0,aoa.length-ci.headerRow-1);}
+/* ---- Point Master Database (PANEL -> INSTRUMENT TAG) ---- */
+const PMD_SHEET_NAME='installpmd';
+const PMD_FIELDS=[
+  ['CARD','card'],
+  ['POINT POSITION','pointposition'],
+  ['POINT TYPE','pointtype'],
+  ['P&ID','pid'],
+  ['Location','location'],
+  ['RELEASE','release'],
+  ['DESCRIPTION','description']
+];
+const _pmdCache=new Map();
+function isPmdFile(file){return !!(file&&file.sheets.some(s=>normH(s)===PMD_SHEET_NAME));}
+function detectPmd(headers){
+  const norm=headers.map(normH),panel=norm.indexOf('panel'),tag=norm.indexOf('instrumenttag');
+  if(panel<0||tag<0)return null;
+  const map={PANEL:panel,'INSTRUMENT TAG':tag};
+  for(const [label,key] of PMD_FIELDS){const i=norm.indexOf(key);if(i>=0)map[label]=i;}
+  return map;
+}
+function pmdInfo(key){
+  if(_pmdCache.has(key))return _pmdCache.get(key);
+  const {aoa}=getAoa(key);let res=null;
+  for(let r=0;r<Math.min(aoa.length,60);r++){
+    const map=detectPmd((aoa[r]||[]).map(clean));
+    if(map){res={map,headerRow:r};break;}
+  }
+  _pmdCache.set(key,res);return res;
+}
+function isPmdSheet(key){const [fid]=key.split(KEYSEP);return isPmdFile(fileById(fid));}
+function pmdRowCount(key){const pi=pmdInfo(key);if(!pi)return sheetRowCount(key);const {aoa}=getAoa(key);return Math.max(0,aoa.length-pi.headerRow-1);}
+function pmdPanelKey(value){return normSep(cleanTag(value).replace(/[-_](?:NPS|CPS)$/i,''));}
 /* ---- Current Working Copy (an SSM-like sheet: Equipment ID / Closest Parent / Dependencies) ---- */
 function detectWC(headers){
   const norm=headers.map(normH);
@@ -1202,8 +1265,8 @@ function parseWorkCopy(){
       if(!cols)continue;
       const rows=[];
       for(let i=r+1;i<aoa.length;i++){
-        const equip=clean(aoa[i][cols.equip]);if(!equip)continue;
-        rows.push({equip,parent:cols.parent>=0?clean(aoa[i][cols.parent]):'',dep:cols.dep>=0?clean(aoa[i][cols.dep]):''});
+        const equip=cleanTag(aoa[i][cols.equip]);if(!equip)continue;
+        rows.push({equip:cleanTag(aoa[i][cols.equip]),parent:cols.parent>=0?cleanTag(aoa[i][cols.parent]):'',dep:cols.dep>=0?cleanTag(aoa[i][cols.dep]):''});
       }
       if(rows.length){S.wcRows=rows;return;}
     }
@@ -1225,11 +1288,11 @@ function sheetRowCount(key){const {aoa,headerRow}=getAoa(key);return Math.max(0,
    downstream tag is dropped so the branch stops at that downstream tag) ---- */
 function rowToPath(row,cols){
   const segs=[];let hasId=false;
-  const s=clean(row[cols.source]);if(s)segs.push(s);
-  for(const di of cols.downstream){const v=clean(row[di]);if(v)segs.push(v);}
-  const id=clean(row[cols.idName]);
+  const s=cleanTag(row[cols.source]);if(s)segs.push(s);
+  for(const di of cols.downstream){const v=cleanTag(row[di]);if(v)segs.push(v);}
+  const id=cleanTag(row[cols.idName]);
   if(id&&!(segs.length&&id===segs[segs.length-1])){segs.push(id);hasId=true;}
-  const loadDesc=cols.loadDesc>=0?clean(row[cols.loadDesc]):'';
+  const loadDesc=cols.loadDesc>=0?cleanTag(row[cols.loadDesc]):'';
   return {segs,hasId,loadDesc};
 }
 function insertPath(root,p,hasId){
@@ -1250,6 +1313,7 @@ function buildRoots(root){
   let id=0;
   const conv=(m,depth,parent)=>{
     const node={id:'n'+(id++),name:m.name,depth,isId:m.isId,isLoad:!!m.isLoad,parent,children:[],
+      isInstrument:!!m.isInstrument,description:m.description||'',pmdKey:m.pmdKey||'',pmdPanel:m.pmdPanel||'',
       isSpare:isSpareName(m.name),isSpace:isSpaceName(m.name)};
     node.children=[...m.kids.values()].sort((a,b)=>natCmp(a.name,b.name)).map(k=>conv(k,depth+1,node));
     return node;
@@ -1282,7 +1346,7 @@ function renderSteps(){
     return `<span class="step ${cls}"><span class="num">${i<cur?ic('check'):i+1}</span>${labels[k]}</span>`+(i<order.length-1?'<span class="step-sep"></span>':'');
   }).join('');
 }
-function go(screen){S.screen=screen;render();try{window.scrollTo({top:0,behavior:'instant'});}catch(e){window.scrollTo(0,0);}}
+function go(screen){if(screen!=='result'&&S.resultFullscreen){S.resultFullscreen=false;document.body.classList.remove('result-fullscreen');}S.screen=screen;render();try{window.scrollTo({top:0,behavior:'instant'});}catch(e){window.scrollTo(0,0);}}
 function render(){renderSteps();if(S.screen==='upload')return renderUpload();if(S.screen==='sheets')return renderSheets();if(S.screen==='result')return renderResult();}
 
 /* ---- upload screen ---- */
@@ -1355,7 +1419,7 @@ function renderFileList(){
   const hint=$('#uphint');if(hint)hint.textContent=okFiles.length?`${okFiles.length} file${okFiles.length!==1?'s':''} · ${tabs} tab${tabs!==1?'s':''} ready`:'';
   const cont=$('#toSheets');if(cont)cont.disabled=okFiles.length===0;
   const clr=$('#clearall');if(clr)clr.style.display=S.files.length?'':'none';
-  $$('.xbtn').forEach(b=>b.onclick=()=>{const id=b.dataset.id;S.files=S.files.filter(f=>f.id!==id);[...S.selected,...S.cableSel].forEach(k=>{if(k.split(KEYSEP)[0]===id){S.selected.delete(k);S.cableSel.delete(k);}});renderFileList();});
+  $$('.xbtn').forEach(b=>b.onclick=()=>{const id=b.dataset.id;S.files=S.files.filter(f=>f.id!==id);[...S.selected,...S.cableSel,...S.pmdSel].forEach(k=>{if(k.split(KEYSEP)[0]===id){S.selected.delete(k);S.cableSel.delete(k);S.pmdSel.delete(k);}});renderFileList();});
 }
 function wireUpload(){
   const dz=$('#dz'),input=$('#file');
@@ -1366,7 +1430,7 @@ function wireUpload(){
   ['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');}));
   ['dragleave','dragend'].forEach(ev=>dz.addEventListener(ev,e=>{if(e.target===dz)dz.classList.remove('drag');}));
   dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');addFiles([...e.dataTransfer.files]);});
-  $('#clearall').onclick=()=>{S.files=[];S.aoaCache.clear();S.selected.clear();S.cableSel.clear();S.override={};S.workCopy=null;S.wcRows=null;renderFileList();renderWorkCopy();};
+  $('#clearall').onclick=()=>{S.files=[];S.aoaCache.clear();S.selected.clear();S.cableSel.clear();S.pmdSel.clear();S.override={};S.workCopy=null;S.wcRows=null;renderFileList();renderWorkCopy();};
   $('#toSheets').onclick=async()=>{if($('#toSheets').disabled)return;await prewarmSheets();go('sheets');};
 }
 async function addFiles(fileObjs){
@@ -1394,7 +1458,8 @@ async function prewarmSheets(){
     report(1,`${keys.length} tab${keys.length!==1?'s':''} scanned`);
   });
   // default: use every detected Cable Schedule tab for dependencies
-  allKeys().forEach(k=>{if(isCableSheet(k))S.cableSel.add(k);});
+  allKeys().forEach(k=>{if(!isPmdSheet(k)&&isCableSheet(k))S.cableSel.add(k);});
+  S.files.forEach(f=>{if(isPmdFile(f))f.sheets.forEach(s=>{const key=f.id+KEYSEP+s;if(normH(s)===PMD_SHEET_NAME)S.pmdSel.add(key);});});
 }
 
 /* ---- sheets screen ---- */
@@ -1413,7 +1478,7 @@ function renderSheets(){
       <button class="btn ghost sm" id="selNone">Clear</button>
     </div>
     <div class="card-body">
-      <div class="note info" style="margin-bottom:14px">${ic('info')}<div>Hierarchy tabs build the tree (use <b>Edit columns</b> if a tab is flagged). Any <b>Cable Schedule</b> tab is detected automatically and used to attach dependencies.</div></div>
+      <div class="note info" style="margin-bottom:14px">${ic('info')}<div>Hierarchy tabs build the tree (use <b>Edit columns</b> if a tab is flagged). Cable Schedule tabs attach dependencies. An <b>INSTALL PMD</b> tab is selected automatically to attach instruments to matching Load Descriptions.</div></div>
       <div id="sheetgroups"></div>
     </div>
     <div class="actions" style="margin:0;padding:18px 22px">
@@ -1421,11 +1486,11 @@ function renderSheets(){
       <button class="btn primary spacer" id="build" disabled>Build hierarchy ${ic('chevron-right')}</button>
     </div>
   </section>`;
-  const cableKeys=[];
+  const cableKeys=[],pmdKeys=[];
   const groups=okFiles.map(f=>{
     const k=fileKindIcon(f.ext);
-    const hierSheets=f.sheets.filter(s=>!isCableSheet(f.id+KEYSEP+s));
-    f.sheets.forEach(s=>{const key=f.id+KEYSEP+s;if(isCableSheet(key))cableKeys.push(key);});
+    const hierSheets=f.sheets.filter(s=>{const key=f.id+KEYSEP+s;return !isPmdSheet(key)&&!isCableSheet(key);});
+    f.sheets.forEach(s=>{const key=f.id+KEYSEP+s;if(isPmdSheet(key))pmdKeys.push(key);else if(isCableSheet(key))cableKeys.push(key);});
     if(!hierSheets.length)return '';
     const rows=hierSheets.map(sheet=>{
       const key=f.id+KEYSEP+sheet,cols=resolveCols(key),sel=S.selected.has(key);
@@ -1438,6 +1503,20 @@ function renderSheets(){
     }).join('');
     return `<div class="grp"><div class="grp-h"><span class="ficon ${k.cls}">${ic(k.name)}</span><span class="gname">${esc(f.name)}</span><span class="gcount">${hierSheets.length} tab${hierSheets.length!==1?'s':''}</span></div><div class="sheets">${rows}</div></div>`;
   }).join('');
+  let pmdGroup='';
+  if(pmdKeys.length){
+    const rows=pmdKeys.map(key=>{
+      const [fid,sheet]=key.split(KEYSEP),pi=pmdInfo(key),sel=S.pmdSel.has(key);
+      const det=pi
+        ? `<span>PANEL → INSTRUMENT TAG</span>·<span><b>${Math.max(0,Object.keys(pi.map).length-2)}</b> detail columns</span><span class="pill ok">${ic('check')}PMD columns detected</span>`
+        : `<span>PMD workbook tab</span><span class="pill warn">${ic('triangle-alert')}PANEL / INSTRUMENT TAG not found</span>`;
+      return `<div class="srow pmd ${sel?'on':''}" data-pmd="${esc(key)}">
+        <label class="chk"><input type="checkbox" ${sel?'checked':''}><span class="box">${ic('check')}</span></label>
+        <div class="sinfo"><div class="sname">${ic('database')}${esc(sheet)} <span class="srows">${pmdRowCount(key)} rows · ${esc(fileById(fid).name)}</span></div>
+        <div class="sdet">${det}</div></div></div>`;
+    }).join('');
+    pmdGroup=`<div class="grp pmdgrp"><div class="grp-h"><span class="ficon pmd">${ic('database')}</span><span class="gname">Point Master Database — instruments</span><span class="gcount">${pmdKeys.length} tab${pmdKeys.length!==1?'s':''}</span></div><div class="sheets">${rows}</div></div>`;
+  }
   let cableGroup='';
   if(cableKeys.length){
     const rows=cableKeys.map(key=>{
@@ -1452,7 +1531,7 @@ function renderSheets(){
     }).join('');
     cableGroup=`<div class="grp cablegrp"><div class="grp-h"><span class="ficon cable">${ic('spline')}</span><span class="gname">Cable Schedule — dependencies</span><span class="gcount">${cableKeys.length} tab${cableKeys.length!==1?'s':''}</span></div><div class="sheets">${rows}</div></div>`;
   }
-  $('#sheetgroups').innerHTML=groups+cableGroup;
+  $('#sheetgroups').innerHTML=groups+pmdGroup+cableGroup;
   wireSheets();updateSelInfo();
 }
 function wireSheets(){
@@ -1473,8 +1552,14 @@ function wireSheets(){
     row.addEventListener('click',e=>{if(e.target.closest('.chk'))return;set(!S.cableSel.has(key));});
     cb.addEventListener('change',()=>set(cb.checked));
   });
+  $$('.srow[data-pmd]').forEach(row=>{
+    const key=row.dataset.pmd,cb=row.querySelector('input');
+    const set=on=>{if(on)S.pmdSel.add(key);else S.pmdSel.delete(key);cb.checked=on;row.classList.toggle('on',on);updateSelInfo();};
+    row.addEventListener('click',e=>{if(e.target.closest('.chk'))return;set(!S.pmdSel.has(key));});
+    cb.addEventListener('change',()=>set(cb.checked));
+  });
 }
-function allHierKeys(){return S.files.filter(f=>!f.error).flatMap(f=>f.sheets.map(s=>f.id+KEYSEP+s)).filter(k=>!isCableSheet(k));}
+function allHierKeys(){return S.files.filter(f=>!f.error).flatMap(f=>f.sheets.map(s=>f.id+KEYSEP+s)).filter(k=>!isPmdSheet(k)&&!isCableSheet(k));}
 function allKeys(){return S.files.filter(f=>!f.error).flatMap(f=>f.sheets.map(s=>f.id+KEYSEP+s));}
 function toggleEditPanel(key,row){
   const panel=row.nextElementSibling;
@@ -1491,8 +1576,8 @@ function toggleEditPanel(key,row){
   panel.hidden=!panel.hidden;
 }
 function updateSelInfo(){
-  const n=S.selected.size,c=S.cableSel.size,info=$('#selinfo');
-  if(info)info.textContent=(n?`${n} hierarchy tab${n!==1?'s':''}`:'No hierarchy tabs')+(c?` · ${c} cable schedule`:'');
+  const n=S.selected.size,c=S.cableSel.size,p=S.pmdSel.size,info=$('#selinfo');
+  if(info)info.textContent=(n?`${n} hierarchy tab${n!==1?'s':''}`:'No hierarchy tabs')+(c?` · ${c} cable schedule`:'')+(p?` · ${p} PMD tab${p!==1?'s':''}`:'');
   const b=$('#build');if(b)b.disabled=n===0;
 }
 
@@ -1508,15 +1593,86 @@ async function buildDeps(tick){
     const loadC=map['Load Name (To)'],panelC=map['Panel (From)'],ents=Object.entries(map);
     for(let i=headerRow+1;i<aoa.length;i++){
       if(tick)await tick('Reading cable schedule');
-      const row=aoa[i],load=clean(row[loadC]);if(!load)continue;
-      const lk=load.toLowerCase(),panel=clean(row[panelC]);
+      const row=aoa[i],load=cleanTag(row[loadC]);if(!load)continue;
+      const lk=load.toLowerCase(),panel=cleanTag(row[panelC]);
       if(!S.deps.has(lk)&&panel)S.deps.set(lk,panel);
       if(!S.depDetail.has(lk)){
-        const fields={};for(const [label,idx] of ents)fields[label]=clean(row[idx]);
+        const fields={};for(const [label,idx] of ents)fields[label]=(label==='Load Name (To)'||label==='Panel (From)')?cleanTag(row[idx]):clean(row[idx]);
         S.depDetail.set(lk,fields);
       }
     }
   }
+}
+async function buildPmd(tick){
+  S.pmdRows=[];S.pmdPanels=[];S.pmdLinks=[];S.pmdPanelMap=new Map();S.pmdDetail=new Map();S.pmdMatchedPanels=new Set();
+  const seen=new Set();
+  for(const key of S.pmdSel){
+    const [fid]=key.split(KEYSEP);if(!fileById(fid))continue;
+    const pi=pmdInfo(key);if(!pi)continue;
+    const {map,headerRow}=pi,{aoa}=getAoa(key);
+    for(let i=headerRow+1;i<aoa.length;i++){
+      if(tick)await tick('Reading Point Master Database');
+      const row=aoa[i],panel=cleanTag(row[map.PANEL]),tag=cleanTag(row[map['INSTRUMENT TAG']]);
+      if(!panel||!tag)continue;
+      const panelKey=pmdPanelKey(panel);if(!panelKey)continue;
+      const recKey=panelKey+KEYSEP+tag.toLowerCase();if(seen.has(recKey))continue;seen.add(recKey);
+      const fields={};for(const [label] of PMD_FIELDS)if(map[label]!=null)fields[label]=clean(row[map[label]]);
+      const rec={key:recKey,panel,panelKey,tag,description:fields.DESCRIPTION||'',fields};
+      S.pmdRows.push(rec);S.pmdDetail.set(recKey,rec);
+      let group=S.pmdPanelMap.get(panelKey);
+      if(!group){group={key:panelKey,panel,instruments:[]};S.pmdPanelMap.set(panelKey,group);}
+      group.instruments.push(rec);
+    }
+  }
+  S.pmdPanels=[...S.pmdPanelMap.values()].sort((a,b)=>natCmp(a.panel,b.panel));
+  for(const panel of S.pmdPanels)panel.instruments.sort((a,b)=>natCmp(a.tag,b.tag));
+}
+function _attachPmdInstruments(root,collect){
+  let attached=0;const linkSeen=new Set();
+  const walk=m=>{
+    const originalKids=[...m.kids.values()];
+    if(m.isLoad){
+      const key=pmdPanelKey(m.name),panel=S.pmdPanelMap.get(key);
+      if(panel){
+        m.pmdPanel=panel.panel;S.pmdMatchedPanels.add(panel.key);
+        for(const rec of panel.instruments){
+          if(!m.kids.has(rec.tag))m.kids.set(rec.tag,{name:rec.tag,kids:new Map(),isId:false,isInstrument:true,description:rec.description,pmdKey:rec.key});
+          attached++;
+        }
+        if(collect){
+          const loadKey=cleanTag(m.name).toLowerCase(),linkKey=loadKey+KEYSEP+panel.key;
+          if(!linkSeen.has(linkKey)){linkSeen.add(linkKey);collect.push({panel:panel.panel,pmdPanel:panel.panel,panelKey:panel.key,loadName:m.name,loadKey,instruments:panel.instruments});}
+        }
+      }
+    }
+    originalKids.forEach(walk);
+  };
+  walk(root);return attached;
+}
+function attachPmdInstruments(root){
+  const links=[];S.pmdMatchedPanels=new Set();
+  const attached=_attachPmdInstruments(root,links);S.pmdLinks=links;return attached;
+}
+function appendPmdSsmRows(rows,includeUnmatched){
+  if(!S.pmdPanels.length)return rows;
+  const rowKeys=new Set(rows.map(r=>cleanTag(r[0]).toLowerCase()));
+  const links=S.pmdLinks.filter(link=>includeUnmatched||rowKeys.has(link.loadKey));
+  if(includeUnmatched){
+    for(const panel of S.pmdPanels){
+      if(S.pmdMatchedPanels.has(panel.key))continue;
+      links.push({panel:panel.panel,loadName:panel.panel,loadKey:cleanTag(panel.panel).toLowerCase(),instruments:panel.instruments});
+    }
+  }
+  if(!links.length)return rows;
+  const linkKeys=new Set(links.map(link=>link.loadKey)),existingDeps=new Map(),base=[];
+  for(const row of rows){
+    const key=cleanTag(row[0]).toLowerCase();
+    if(linkKeys.has(key)&&row[2]!=null){if(!existingDeps.has(key))existingDeps.set(key,cleanTag(row[2]));continue;}
+    base.push(row);
+  }
+  const panelRows=links.map(link=>[link.loadName,'',existingDeps.get(link.loadKey)||depOf(link.loadName)||depOf(link.panel)||'']);
+  const instrumentRows=links.flatMap(link=>link.instruments.map(rec=>[rec.tag,link.loadName,'']));
+  return [...base,...panelRows,...instrumentRows];
 }
 async function buildHierarchy(){
   const keys=[...S.selected];if(!keys.length)return;
@@ -1526,13 +1682,15 @@ async function buildHierarchy(){
     // weight progress by actual rows so the bar tracks reality on big datasets
     const rowsIn=key=>{const {aoa,headerRow}=getAoa(key);return Math.max(0,aoa.length-headerRow-1);};
     let cableRows=0;for(const k of S.cableSel)if(cableInfo(k)){cableRows+=Math.max(0,(getAoa(k).aoa.length)-(cableInfo(k).headerRow)-1);}
+    let pmdRows=0;for(const k of S.pmdSel)if(pmdInfo(k)){pmdRows+=Math.max(0,getAoa(k).aoa.length-pmdInfo(k).headerRow-1);}
     let hierRows=0;for(const k of keys)hierRows+=rowsIn(k);
-    const total=Math.max(1,cableRows+hierRows);let done=0;
+    const total=Math.max(1,cableRows+pmdRows+hierRows);let done=0;
     const READ_LO=.03,READ_HI=.78;
     const tick=async(label)=>{done++;await maybeYield(report,READ_LO+(READ_HI-READ_LO)*(done/total),label);};
 
-    report(.02,'Reading cable schedule');await raf();
+    report(.02,'Reading source data');await raf();
     await buildDeps(tick);
+    await buildPmd(tick);
     S.epDetail=new Map();
     const combined={name:'__root__',kids:new Map()};let rowsRead=0,loadCount=0;
     const seenC=new Set(),ssmCombined=[],sheets=[];
@@ -1573,8 +1731,12 @@ async function buildHierarchy(){
       }
       sheets.push({key,sheetName,fileName:fileById(fid).name,_sMap:sMap,ssmRows}); // tree built lazily on export
     }
+    report(.80,'Linking PMD instruments');await raf();
+    const instrumentCount=attachPmdInstruments(combined);
+    for(const sh of sheets)_attachPmdInstruments(sh._sMap,null);
+    S.sheets=sheets;S.ssmCombined=appendPmdSsmRows(ssmCombined,true);
+    for(const sh of S.sheets)sh.ssmRows=appendPmdSsmRows(sh.ssmRows,false);
     report(.82,'Finalizing tree');await raf();
-    S.sheets=sheets;S.ssmCombined=ssmCombined;
     S.roots=finalize(combined); // call last so nodeById matches the displayed combined tree
     // every equipment name in the Easy Power hierarchy (for cable cross-check)
     report(.86,'Indexing equipment');await raf();
@@ -1585,7 +1747,7 @@ async function buildHierarchy(){
     S.stats=computeStats(S.roots);
     S.stats.rowsRead=rowsRead;S.stats.tabs=keys.length;
     S.stats.files=new Set(keys.map(k=>k.split(KEYSEP)[0])).size;
-    S.stats.deps=S.deps.size;S.stats.loads=loadCount;S.stats.review=S.review.length;
+    S.stats.deps=S.deps.size;S.stats.loads=loadCount;S.stats.instruments=instrumentCount;S.stats.review=S.review.length;
     report(1,'Done');
   });
   if(!S.roots.length){toast('No hierarchy rows found in the selected tabs');return;}
@@ -1609,18 +1771,18 @@ async function buildReview(report){
     const loadC=map['Load Name (To)'],panelC=map['Panel (From)'],circC=map['Circuit_Number'];
     for(let i=headerRow+1;i<aoa.length;i++){
       cdone++;if(report)await maybeYield(report,.88+.06*(cdone/totalCable),'Cross-checking cable schedule');
-      const load=clean(aoa[i][loadC]);if(!load)continue;
+      const load=cleanTag(aoa[i][loadC]);if(!load)continue;
       const lk=load.toLowerCase();
       if(S.epNameSet.has(lk))continue;          // exact match — fine
       if(seen.has(lk))continue;seen.add(lk);
       const matches=topFuzzy(load,epPref.get(normSep(load).slice(0,3))||[],3); // up to 3, best-first
-      const rec={load,panel:clean(aoa[i][panelC]),circuit:circC!=null?clean(aoa[i][circC]):'',matches};
+      const rec={load,panel:cleanTag(aoa[i][panelC]),circuit:circC!=null?clean(aoa[i][circC]):'',matches};
       S.review.push({...rec,searchKey:reviewSearchKey(rec)});
     }
   }
 }
 /* Resolve a stored SSM row [equip, parent, depOverride] to display values. */
-function ssmResolve(r){const e=r[0],par=r[1]||'',dep=r[2]!=null?r[2]:(depOf(e)||'');return {equip:e,parent:par,dep};}
+function ssmResolve(r){const e=cleanTag(r[0]),par=cleanTag(r[1]||''),dep=r[2]!=null?cleanTag(r[2]):(depOf(e)||'');return {equip:e,parent:par,dep};}
 function sameRegisterValue(a,b){return clean(a).toLowerCase()===clean(b).toLowerCase();}
 function registerDepValue(parent,dep){
   const d=clean(dep);
@@ -1660,7 +1822,7 @@ function renderResult(){
   const st=S.stats;
   const tab=(t,label,icon,count)=>`<button class="tabbtn ${S.tab===t?'on':''}" data-tab="${t}">${ic(icon)}${esc(label)}${count!=null?`<span class="tabcount">${count}</span>`:''}</button>`;
   $('#view').innerHTML=`
-  <section>
+  <section id="resultShell" class="${S.resultFullscreen?'fullscreen':''}">
     <div class="statwrap ${S.showStats?'':'collapsed'}" id="statwrap"><div class="statbar">
       ${statCard('database','Files',st.files,true)}
       ${statCard('table-2','Tabs',st.tabs,true)}
@@ -1668,6 +1830,7 @@ function renderResult(){
       ${statCard('network','Nodes',st.nodes)}
       ${statCard('tag','ID Names',st.idCount)}
       ${st.loads?statCard('corner-down-right','Loads',st.loads):''}
+      ${st.instruments?statCard('database','Instruments',st.instruments):''}
       ${statCard('layers','Levels',st.maxDepth)}
       ${S.hasCable?statCard('spline','Deps',st.deps):''}
     </div></div>
@@ -1676,6 +1839,7 @@ function renderResult(){
       ${S.hasCable?tab('review','Review','triangle-alert',st.review):''}
       ${S.wcRows?tab('compare','Comparison','git-branch',S.compare.length):''}
       <button class="statstoggle" id="statsToggle" aria-pressed="${S.showStats}" title="${S.showStats?'Hide stats':'Show stats'}">${ic(S.showStats?'chevrons-up':'chevrons-down')}<span>${S.showStats?'Hide stats':'Show stats'}</span></button>
+      <button class="btn fullbtn" id="fullscreenToggle" title="${S.resultFullscreen?'Exit full screen':'Full screen'}" aria-label="${S.resultFullscreen?'Exit full screen':'Full screen'}">${ic(S.resultFullscreen?'minimize-2':'maximize-2')}</button>
     </div>
     <div id="panel-tree" class="panel" ${S.tab!=='tree'?'hidden':''}>
       <div class="toolbar">
@@ -1719,6 +1883,7 @@ function wireResult(){
   $('#expExto').onclick=exportExtoSSMXlsx;
   $('#expSSM').onclick=exportSSMXlsx;
   $('#expTxt').onclick=exportOutlineTxt;
+  $('#fullscreenToggle').onclick=()=>setResultFullscreen(!S.resultFullscreen);
   $$('.tabbtn').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
   const stg=$('#statsToggle');
   if(stg)stg.onclick=()=>{
@@ -1737,6 +1902,14 @@ function wireResult(){
   togChip('tgSpares',()=>S.showSpares,v=>S.showSpares=v,reflow);
   togChip('tgSpaces',()=>S.showSpaces,v=>S.showSpaces=v,reflow);
   togChip('tgDeps',()=>S.showDeps,v=>S.showDeps=v,()=>$('#tree').classList.toggle('hide-deps',!S.showDeps));
+}
+function setResultFullscreen(on){
+  on=!!on;S.resultFullscreen=on;
+  const resultShell=$('#resultShell');if(!resultShell)return;
+  resultShell.classList.toggle('fullscreen',on);
+  document.body.classList.toggle('result-fullscreen',on);
+  const btn=$('#fullscreenToggle');if(btn){btn.title=on?'Exit full screen':'Full screen';btn.setAttribute('aria-label',btn.title);btn.innerHTML=ic(on?'minimize-2':'maximize-2');}
+  requestAnimationFrame(()=>{if(S.tab==='review')refreshReview();else if(S.tab==='compare')refreshCompare();});
 }
 function setTab(t){
   if(t===S.tab)return;
@@ -2039,21 +2212,23 @@ function rowInner(node,prefixArr,isLast,isRoot,hl){
   const kids=kidsOf(node),hasKids=kids.length>0;
   const dep=nodeDep(node);
   const depBadge=dep?`<span class="dep ${node.isLoad?'dep-load':''}" title="${node.isLoad?'Dependency · equipment above':'Dependency · Panel (From)'}">${ic('spline')}${esc(dep)}</span>`:'';
+  const pmdBadge=node.pmdPanel?`<span class="dep pmd-link" title="Matched PMD panel">${ic('database')}${esc(node.pmdPanel)}</span>`:'';
+  const descTitle=node.isInstrument&&node.description?` title="${esc(node.description)}"`:'';
   const nk=clean(node.name).toLowerCase();
-  const infoBtn=(S.depDetail.has(nk)||S.epDetail.has(nk))?`<button class="rowinfo" data-detail="${node.id}" title="Details" aria-label="Details for ${esc(node.name)}">${ic('info')}</button>`:'';
+  const infoBtn=(S.depDetail.has(nk)||S.epDetail.has(nk)||node.pmdKey||node.pmdPanel)?`<button class="rowinfo" data-detail="${node.id}" title="Details" aria-label="Details for ${esc(node.name)}">${ic('info')}</button>`:'';
   if(isRoot){
     return `<div class="row root ${hasKids?'':'leafrow'}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
       ${hasKids?`<span class="twist">${ic('chevron-right')}</span>`:'<span class="twist"></span>'}
       <span class="badge-root">${ic('zap')}</span>
-      <span class="lbl">${lblHtml(node.name,hl)}</span>
-      ${depBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${infoBtn}</div>`;
+      <span class="lbl"${descTitle}>${lblHtml(node.name,hl)}</span>
+      ${depBadge}${pmdBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${infoBtn}</div>`;
   }
-  const marker=hasKids?'<span class="marker branch"></span>':(node.isLoad?`<span class="marker load">${ic('corner-down-right')}</span>`:node.isId?`<span class="marker leaf">${ic('tag')}</span>`:'<span class="marker dot"></span>');
-  return `<div class="row ${hasKids?'':'leafrow'} ${node.isLoad?'is-load':''} ${node.isSpare?'is-spare':''} ${node.isSpace?'is-space':''}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
+  const marker=hasKids?'<span class="marker branch"></span>':(node.isInstrument?`<span class="marker instrument">${ic('database')}</span>`:node.isLoad?`<span class="marker load">${ic('corner-down-right')}</span>`:node.isId?`<span class="marker leaf">${ic('tag')}</span>`:'<span class="marker dot"></span>');
+  return `<div class="row ${hasKids?'':'leafrow'} ${node.isLoad?'is-load':''} ${node.isInstrument?'is-instrument':''} ${node.isSpare?'is-spare':''} ${node.isSpace?'is-space':''}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
     <span class="gut">${gutterHtml(prefixArr,isLast)}</span>
     ${hasKids?`<span class="twist">${ic('chevron-right')}</span>`:'<span class="twist"></span>'}
-    ${marker}<span class="lbl ${hasKids?'':'lbl-leaf'}">${lblHtml(node.name,hl)}</span>
-    ${depBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${infoBtn}</div>`;
+    ${marker}<span class="lbl ${hasKids?'':'lbl-leaf'}"${descTitle}>${lblHtml(node.name,hl)}</span>
+    ${depBadge}${pmdBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${infoBtn}</div>`;
 }
 function makeNode(node,prefixArr,isLast,isRoot){
   node._prefix=prefixArr;node._isLast=isLast;node._isRoot=isRoot;node._built=false;
@@ -2416,9 +2591,11 @@ function openDetail(nodeId){
   const node=S.nodeById.get(nodeId);if(!node)return;
   const nk=clean(node.name).toLowerCase();
   const d=S.depDetail.get(nk),ep=S.epDetail.get(nk);
-  $('#drawerTitle').innerHTML=`${ic(node.isLoad?'corner-down-right':'spline')}<span>${esc(node.name)}</span>`;
+  const pmd=node.pmdKey?S.pmdDetail.get(node.pmdKey):null;
+  $('#drawerTitle').innerHTML=`${ic(node.isInstrument?'database':node.isLoad?'corner-down-right':'spline')}<span>${esc(node.name)}</span>`;
   const fld=(label,val,extra)=>`<div class="dfield"><div class="dlabel">${esc(label)}</div><div class="dval ${val?'':'empty'}">${esc(val||'—')}${extra||''}</div></div>`;
   let html='';
+  if(node.pmdPanel)html+=fld('PMD Panel Match',node.pmdPanel);
   // Dependency (load descriptions point at the equipment above them)
   const dep=nodeDep(node);
   if(dep)html+=fld(node.isLoad?'Dependency (equipment above)':'Dependency · Panel (From)',dep);
@@ -2438,7 +2615,10 @@ function openDetail(nodeId){
       html+=fld(l,clean(d[l]));
     }
   }
-  if(!html)html=`<div class="note info">${ic('info')}<div>No cable schedule or circuit detail for this tag.</div></div>`;
+  if(pmd){
+    for(const label of ['CARD','POINT POSITION','POINT TYPE','P&ID','Location','RELEASE'])html+=fld(label,pmd.fields[label]||'');
+  }
+  if(!html)html=`<div class="note info">${ic('info')}<div>No cable schedule, Easy Power, or PMD detail for this tag.</div></div>`;
   $('#drawerBody').innerHTML=html;
   $('#drawer').classList.add('show');
 }
@@ -2448,7 +2628,7 @@ function closeDrawer(){$('#drawer').classList.remove('show');}
 $('#brandmark').innerHTML=ic('zap');
 $('#drawerClose').innerHTML=ic('x');
 (function(){const dw=$('#drawer');dw.addEventListener('click',e=>{if(e.target===dw||e.target.closest('#drawerClose'))closeDrawer();});})();
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#drawer').classList.contains('show'))closeDrawer();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#drawer').classList.contains('show'))closeDrawer();if(e.key==='Escape'&&S.resultFullscreen)setResultFullscreen(false);});
 render();
 initUpdateCheck();
 </script>
