@@ -83,6 +83,7 @@ test('loader progress keeps a composited spinner and growing percent ring on iPa
 
 test('changelog modal is available from update tabs and the version link', () => {
   assert.match(html, /const CHANGELOG=\[/)
+  assert.match(html, /version:'1\.1\.4'/)
   assert.match(html, /version:'1\.1\.3'/)
   assert.match(html, /version:'1\.1\.2'/)
   assert.match(html, /version:'1\.1\.1'/)
@@ -100,6 +101,8 @@ test('changelog modal is available from update tabs and the version link', () =>
   assert.match(html, /type:'major'/)
   assert.match(html, /Improved large-dataset tab performance with virtualized Review and Comparison tables/)
   assert.match(html, /Added Point Master Database instruments to hierarchy views, details, and SSM exports/)
+  assert.match(html, /Added PMD matching for building-prefixed panels and instrument tags/)
+  assert.match(html, /Improved PMD metadata and SSM exports with building-aware labels/)
   assert.match(html, /Added full-screen views for Hierarchy, Review, and Comparison tabs/)
   assert.match(html, /Removed trailing -P suffixes from equipment tags/)
   assert.match(html, /Improved Comparison tab performance for large working-copy reviews/)
@@ -132,7 +135,7 @@ test('equipment tags consistently drop a trailing -P suffix', () => {
 
 test('PMD workbooks auto-select INSTALL PMD and add instrument hierarchy metadata', () => {
   assert.match(html, /pmdSel:new Set\(\)/)
-  assert.match(html, /pmdRows:\[\],pmdPanels:\[\],pmdLinks:\[\],pmdPanelMap:new Map\(\),pmdDetail:new Map\(\)/)
+  assert.match(html, /pmdRows:\[\],pmdPanels:\[\],pmdLinks:\[\],pmdPanelMap:new Map\(\),pmdSuffixMap:new Map\(\),pmdDetail:new Map\(\)/)
   assert.match(html, /const PMD_SHEET_NAME='installpmd'/)
   assert.match(html, /function isPmdFile\(file\)/)
   assert.match(html, /function pmdInfo\(key\)/)
@@ -140,6 +143,7 @@ test('PMD workbooks auto-select INSTALL PMD and add instrument hierarchy metadat
   assert.match(html, /if\(normH\(s\)===PMD_SHEET_NAME\)S\.pmdSel\.add\(key\)/)
   assert.match(html, /PANEL → INSTRUMENT TAG/)
   assert.match(html, /function buildPmd\(tick\)/)
+  assert.match(html, /function pmdPanelMatchParts\(value\)/)
   assert.match(html, /function pmdPanelKey\(value\)/)
   assert.match(html, /replace\(\/\[-_\]\(\?:NPS\|CPS\)\$\/i,''\)/)
   assert.match(html, /function attachPmdInstruments\(root\)/)
@@ -147,6 +151,7 @@ test('PMD workbooks auto-select INSTALL PMD and add instrument hierarchy metadat
   assert.match(html, /pmdPanel:panel\.panel/)
   assert.match(html, /title="\$\{esc\(node\.description\)\}"/)
   assert.match(html, /const pmd=node\.pmdKey\?S\.pmdDetail\.get\(node\.pmdKey\):null/)
+  assert.match(html, /fld\('Building',node\.pmdBuilding\)/)
   assert.match(html, /fld\('PMD Panel Match',node\.pmdPanel\)/)
   for (const label of ['CARD', 'POINT POSITION', 'POINT TYPE', 'P&ID', 'Location', 'RELEASE']) {
     assert.match(html, new RegExp(`\\['${label.replace('&', '\\&')}'`))
@@ -155,8 +160,9 @@ test('PMD workbooks auto-select INSTALL PMD and add instrument hierarchy metadat
 
 test('PMD rows are appended to SSM data with panels before instruments', () => {
   assert.match(html, /function appendPmdSsmRows\(rows,includeUnmatched\)/)
+  assert.match(html, /function pmdExportTag\(value,building\)/)
   assert.match(html, /const panelRows=links\.map\(link=>\[link\.loadName,'',existingDeps\.get\(link\.loadKey\)\|\|depOf\(link\.loadName\)\|\|depOf\(link\.panel\)\|\|''\]\)/)
-  assert.match(html, /const instrumentRows=links\.flatMap\(link=>link\.instruments\.map\(rec=>\[rec\.tag,link\.loadName,''\]\)\)/)
+  assert.match(html, /const instrumentRows=links\.flatMap\(link=>link\.instruments\.map\(rec=>\[pmdExportTag\(rec\.tag,link\.building\),link\.loadName,''\]\)\)/)
   assert.match(html, /return \[\.\.\.base,\.\.\.panelRows,\.\.\.instrumentRows\]/)
   assert.match(html, /S\.ssmCombined=appendPmdSsmRows\(ssmCombined,true\)/)
   assert.match(html, /sh\.ssmRows=appendPmdSsmRows\(sh\.ssmRows,false\)/)
@@ -204,6 +210,52 @@ test('PMD base panels link to both CPS and NPS load variants with duplicated ins
     ['LSH-200', 'RIO-1-09_CPS', ''],
     ['FIT-100', 'RIO-1-09-NPS', ''],
     ['LSH-200', 'RIO-1-09-NPS', ''],
+  ])
+})
+
+test('building-prefixed PMD panels match trailing load descriptions and export without the prefix', () => {
+  const value = runInNewContext(`${customScript}
+    const parts=pmdPanelMatchParts('OO44-RIO650-02-1');
+    const fixturePanel={key:parts.key,panel:'OO44-RIO650-02-1',building:parts.building,matchKey:parts.matchKey,instruments:[
+      {key:'tet',tag:cleanTag('OO44-TET105-04-1-P'),description:'Temperature element'},
+      {key:'fit',tag:'FIT-100',description:'Flow indicator'}
+    ]};
+    S.pmdPanels=[fixturePanel];
+    S.pmdPanelMap=new Map([[fixturePanel.key,fixturePanel]]);
+    S.pmdSuffixMap=new Map([[fixturePanel.matchKey,[fixturePanel]]]);
+    const load={name:'RIO650-02-1',kids:new Map(),isId:false,isLoad:true};
+    const root={name:'__root__',kids:new Map([['load',load]])};
+    const attached=attachPmdInstruments(root);
+    const built=buildRoots(root);
+    const exported=appendPmdSsmRows([['RIO650-02-1','MCC-1','MTR-1']],true);
+    JSON.stringify({
+      parts,attached,links:S.pmdLinks.length,
+      panel:load.pmdPanel,building:load.pmdBuilding,
+      children:[...load.kids.values()].map(child=>({name:child.name,building:child.pmdBuilding,panel:child.pmdPanel})),
+      builtBuilding:built[0].pmdBuilding,
+      exported
+    });
+  `, { console, setTimeout, clearTimeout })
+  const result = JSON.parse(value)
+
+  assert.deepEqual(result.parts, {
+    key: 'oo44rio650021',
+    matchKey: 'rio650021',
+    building: 'OO44',
+  })
+  assert.equal(result.attached, 2)
+  assert.equal(result.links, 1)
+  assert.equal(result.panel, 'OO44-RIO650-02-1')
+  assert.equal(result.building, 'OO44')
+  assert.deepEqual(result.children, [
+    { name: 'OO44-TET105-04-1', building: 'OO44', panel: 'OO44-RIO650-02-1' },
+    { name: 'FIT-100', building: 'OO44', panel: 'OO44-RIO650-02-1' },
+  ])
+  assert.equal(result.builtBuilding, 'OO44')
+  assert.deepEqual(result.exported, [
+    ['RIO650-02-1', '', 'MTR-1'],
+    ['TET105-04-1', 'RIO650-02-1', ''],
+    ['FIT-100', 'RIO650-02-1', ''],
   ])
 })
 

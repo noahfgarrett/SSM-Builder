@@ -606,13 +606,21 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.3';
+const APP_VERSION = '1.1.4';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.4',
+    date:'2026-07-17T12:00:00Z',
+    type:'feature',
+    stats:{features:2},
+    notes:`- Added PMD matching for building-prefixed panels and instrument tags
+- Improved PMD metadata and SSM exports with building-aware labels`
+  },
   {
     version:'1.1.3',
     date:'2026-07-16T12:00:00Z',
@@ -967,7 +975,7 @@ function initUpdateCheck(){
 const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:new Set(),override:{},aoaCache:new Map(),
   roots:[],sheets:[],ssmCombined:[],nodeById:new Map(),stats:null,search:'',idOnly:false,
   showSpares:true,showSpaces:true,showDeps:true,deps:new Map(),depDetail:new Map(),hasCable:false,
-  pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
+  pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdSuffixMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
   epDetail:new Map(),epNameSet:new Set(),review:[],workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
   cmpFilter:'all',cmpSearch:'',revSearch:'',revSort:null,revMinPct:null,showStats:true,
   resultFullscreen:false,
@@ -1246,7 +1254,12 @@ function pmdInfo(key){
 }
 function isPmdSheet(key){const [fid]=key.split(KEYSEP);return isPmdFile(fileById(fid));}
 function pmdRowCount(key){const pi=pmdInfo(key);if(!pi)return sheetRowCount(key);const {aoa}=getAoa(key);return Math.max(0,aoa.length-pi.headerRow-1);}
-function pmdPanelKey(value){return normSep(cleanTag(value).replace(/[-_](?:NPS|CPS)$/i,''));}
+function pmdPanelMatchParts(value){
+  const panel=cleanTag(value).replace(/[-_](?:NPS|CPS)$/i,''),key=normSep(panel),split=panel.indexOf('-');
+  const building=split>0?clean(panel.slice(0,split)):'',matchKey=building?normSep(panel.slice(split+1)):'';
+  return {key,matchKey,building};
+}
+function pmdPanelKey(value){return pmdPanelMatchParts(value).key;}
 /* ---- Current Working Copy (an SSM-like sheet: Equipment ID / Closest Parent / Dependencies) ---- */
 function detectWC(headers){
   const norm=headers.map(normH);
@@ -1313,7 +1326,7 @@ function buildRoots(root){
   let id=0;
   const conv=(m,depth,parent)=>{
     const node={id:'n'+(id++),name:m.name,depth,isId:m.isId,isLoad:!!m.isLoad,parent,children:[],
-      isInstrument:!!m.isInstrument,description:m.description||'',pmdKey:m.pmdKey||'',pmdPanel:m.pmdPanel||'',
+      isInstrument:!!m.isInstrument,description:m.description||'',pmdKey:m.pmdKey||'',pmdPanel:m.pmdPanel||'',pmdBuilding:m.pmdBuilding||'',
       isSpare:isSpareName(m.name),isSpace:isSpaceName(m.name)};
     node.children=[...m.kids.values()].sort((a,b)=>natCmp(a.name,b.name)).map(k=>conv(k,depth+1,node));
     return node;
@@ -1604,7 +1617,7 @@ async function buildDeps(tick){
   }
 }
 async function buildPmd(tick){
-  S.pmdRows=[];S.pmdPanels=[];S.pmdLinks=[];S.pmdPanelMap=new Map();S.pmdDetail=new Map();S.pmdMatchedPanels=new Set();
+  S.pmdRows=[];S.pmdPanels=[];S.pmdLinks=[];S.pmdPanelMap=new Map();S.pmdSuffixMap=new Map();S.pmdDetail=new Map();S.pmdMatchedPanels=new Set();
   const seen=new Set();
   for(const key of S.pmdSel){
     const [fid]=key.split(KEYSEP);if(!fileById(fid))continue;
@@ -1614,34 +1627,45 @@ async function buildPmd(tick){
       if(tick)await tick('Reading Point Master Database');
       const row=aoa[i],panel=cleanTag(row[map.PANEL]),tag=cleanTag(row[map['INSTRUMENT TAG']]);
       if(!panel||!tag)continue;
-      const panelKey=pmdPanelKey(panel);if(!panelKey)continue;
+      const parts=pmdPanelMatchParts(panel),panelKey=parts.key;if(!panelKey)continue;
       const recKey=panelKey+KEYSEP+tag.toLowerCase();if(seen.has(recKey))continue;seen.add(recKey);
       const fields={};for(const [label] of PMD_FIELDS)if(map[label]!=null)fields[label]=clean(row[map[label]]);
       const rec={key:recKey,panel,panelKey,tag,description:fields.DESCRIPTION||'',fields};
       S.pmdRows.push(rec);S.pmdDetail.set(recKey,rec);
       let group=S.pmdPanelMap.get(panelKey);
-      if(!group){group={key:panelKey,panel,instruments:[]};S.pmdPanelMap.set(panelKey,group);}
+      if(!group){
+        group={key:panelKey,panel,building:parts.building,matchKey:parts.matchKey,instruments:[]};S.pmdPanelMap.set(panelKey,group);
+        if(group.matchKey&&group.matchKey!==group.key){const matches=S.pmdSuffixMap.get(group.matchKey)||[];matches.push(group);S.pmdSuffixMap.set(group.matchKey,matches);}
+      }
       group.instruments.push(rec);
     }
   }
   S.pmdPanels=[...S.pmdPanelMap.values()].sort((a,b)=>natCmp(a.panel,b.panel));
   for(const panel of S.pmdPanels)panel.instruments.sort((a,b)=>natCmp(a.tag,b.tag));
 }
+function pmdPanelsForLoad(value){
+  const key=pmdPanelKey(value),exact=S.pmdPanelMap.get(key);
+  return exact?[{panel:exact,building:''}]:(S.pmdSuffixMap.get(key)||[]).map(panel=>({panel,building:panel.building||''}));
+}
 function _attachPmdInstruments(root,collect){
   let attached=0;const linkSeen=new Set();
   const walk=m=>{
     const originalKids=[...m.kids.values()];
     if(m.isLoad){
-      const key=pmdPanelKey(m.name),panel=S.pmdPanelMap.get(key);
-      if(panel){
-        m.pmdPanel=panel.panel;S.pmdMatchedPanels.add(panel.key);
-        for(const rec of panel.instruments){
-          if(!m.kids.has(rec.tag))m.kids.set(rec.tag,{name:rec.tag,kids:new Map(),isId:false,isInstrument:true,description:rec.description,pmdKey:rec.key});
-          attached++;
-        }
-        if(collect){
-          const loadKey=cleanTag(m.name).toLowerCase(),linkKey=loadKey+KEYSEP+panel.key;
-          if(!linkSeen.has(linkKey)){linkSeen.add(linkKey);collect.push({panel:panel.panel,pmdPanel:panel.panel,panelKey:panel.key,loadName:m.name,loadKey,instruments:panel.instruments});}
+      const matches=pmdPanelsForLoad(m.name);
+      if(matches.length){
+        m.pmdPanel=[...new Set(matches.map(match=>match.panel.panel))].join(', ');
+        m.pmdBuilding=[...new Set(matches.map(match=>match.building).filter(Boolean))].join(', ');
+        for(const match of matches){
+          const {panel,building}=match;S.pmdMatchedPanels.add(panel.key);
+          for(const rec of panel.instruments){
+            if(!m.kids.has(rec.tag))m.kids.set(rec.tag,{name:rec.tag,kids:new Map(),isId:false,isInstrument:true,description:rec.description,pmdKey:rec.key,pmdPanel:panel.panel,pmdBuilding:building});
+            attached++;
+          }
+          if(collect){
+            const loadKey=cleanTag(m.name).toLowerCase(),linkKey=loadKey+KEYSEP+panel.key;
+            if(!linkSeen.has(linkKey)){linkSeen.add(linkKey);collect.push({panel:panel.panel,pmdPanel:panel.panel,panelKey:panel.key,building,loadName:m.name,loadKey,instruments:panel.instruments});}
+          }
         }
       }
     }
@@ -1653,6 +1677,10 @@ function attachPmdInstruments(root){
   const links=[];S.pmdMatchedPanels=new Set();
   const attached=_attachPmdInstruments(root,links);S.pmdLinks=links;return attached;
 }
+function pmdExportTag(value,building){
+  const tag=cleanTag(value),prefix=clean(building);
+  return prefix&&tag.toLowerCase().startsWith((prefix+'-').toLowerCase())?tag.slice(prefix.length+1):tag;
+}
 function appendPmdSsmRows(rows,includeUnmatched){
   if(!S.pmdPanels.length)return rows;
   const rowKeys=new Set(rows.map(r=>cleanTag(r[0]).toLowerCase()));
@@ -1660,7 +1688,7 @@ function appendPmdSsmRows(rows,includeUnmatched){
   if(includeUnmatched){
     for(const panel of S.pmdPanels){
       if(S.pmdMatchedPanels.has(panel.key))continue;
-      links.push({panel:panel.panel,loadName:panel.panel,loadKey:cleanTag(panel.panel).toLowerCase(),instruments:panel.instruments});
+      links.push({panel:panel.panel,building:'',loadName:panel.panel,loadKey:cleanTag(panel.panel).toLowerCase(),instruments:panel.instruments});
     }
   }
   if(!links.length)return rows;
@@ -1671,7 +1699,7 @@ function appendPmdSsmRows(rows,includeUnmatched){
     base.push(row);
   }
   const panelRows=links.map(link=>[link.loadName,'',existingDeps.get(link.loadKey)||depOf(link.loadName)||depOf(link.panel)||'']);
-  const instrumentRows=links.flatMap(link=>link.instruments.map(rec=>[rec.tag,link.loadName,'']));
+  const instrumentRows=links.flatMap(link=>link.instruments.map(rec=>[pmdExportTag(rec.tag,link.building),link.loadName,'']));
   return [...base,...panelRows,...instrumentRows];
 }
 async function buildHierarchy(){
@@ -2595,6 +2623,7 @@ function openDetail(nodeId){
   $('#drawerTitle').innerHTML=`${ic(node.isInstrument?'database':node.isLoad?'corner-down-right':'spline')}<span>${esc(node.name)}</span>`;
   const fld=(label,val,extra)=>`<div class="dfield"><div class="dlabel">${esc(label)}</div><div class="dval ${val?'':'empty'}">${esc(val||'—')}${extra||''}</div></div>`;
   let html='';
+  if(node.pmdBuilding)html+=fld('Building',node.pmdBuilding);
   if(node.pmdPanel)html+=fld('PMD Panel Match',node.pmdPanel);
   // Dependency (load descriptions point at the equipment above them)
   const dep=nodeDep(node);
