@@ -277,10 +277,17 @@ test('matched PMD panel badges have an independent hierarchy toggle and stats st
   assert.doesNotMatch(html, /statCard\('list-tree','Rows read'/)
 })
 
-test('precise hierarchy search results can expand into their full downstream branch', () => {
+test('precise hierarchy search results expose reversible non-matching branch controls', () => {
   assert.match(html, /const fullKids=kidsOf\(node\),shown=fullKids\.filter\(c=>c\._show&&!nodeHidden\(c\)\)/)
-  assert.match(html, /node\._built=shown\.length===fullKids\.length/)
-  assert.match(html, /if\(!node\._built\)\{\s*kids\.innerHTML=''/)
+  assert.match(html, /searchBranches:new Set\(\)/)
+  assert.match(html, /function branchRevealHtml\(node,hiddenCount,expanded\)/)
+  assert.match(html, /Show \$\{hiddenCount\} non-matching/)
+  assert.match(html, /Show matches only/)
+  assert.match(html, /S\.searchBranches\.has\(node\.id\)/)
+  assert.match(html, /extra\.classList\.add\('search-extra'\)/)
+  assert.match(html, /function toggleSearchBranch\(nodeId\)/)
+  assert.match(html, /\.branch-reveal\{[^}]*min-height:44px/)
+  assert.match(html, /\.node\.search-extra > \.row\{opacity:/)
 })
 
 test('every result tab supports an iPad-friendly full-screen view', () => {
