@@ -83,6 +83,7 @@ test('loader progress keeps a composited spinner and growing percent ring on iPa
 
 test('changelog modal is available from update tabs and the version link', () => {
   assert.match(html, /const CHANGELOG=\[/)
+  assert.match(html, /version:'1\.1\.5'/)
   assert.match(html, /version:'1\.1\.4'/)
   assert.match(html, /version:'1\.1\.3'/)
   assert.match(html, /version:'1\.1\.2'/)
@@ -103,6 +104,9 @@ test('changelog modal is available from update tabs and the version link', () =>
   assert.match(html, /Added Point Master Database instruments to hierarchy views, details, and SSM exports/)
   assert.match(html, /Added PMD matching for building-prefixed panels and instrument tags/)
   assert.match(html, /Improved PMD metadata and SSM exports with building-aware labels/)
+  assert.match(html, /Added a hierarchy toggle for matched PMD panel labels/)
+  assert.match(html, /Removed Files, Tabs, and Rows Read summary cards/)
+  assert.match(html, /Improved hierarchy search so matched branches can be expanded to nested equipment/)
   assert.match(html, /Added full-screen views for Hierarchy, Review, and Comparison tabs/)
   assert.match(html, /Removed trailing -P suffixes from equipment tags/)
   assert.match(html, /Improved Comparison tab performance for large working-copy reviews/)
@@ -257,6 +261,26 @@ test('building-prefixed PMD panels match trailing load descriptions and export w
     ['TET105-04-1', 'RIO650-02-1', ''],
     ['FIT-100', 'RIO650-02-1', ''],
   ])
+})
+
+test('matched PMD panel badges have an independent hierarchy toggle and stats stay focused', () => {
+  assert.match(html, /showPmdMatches:true/)
+  assert.match(html, /treePanelCacheKey\(\).*S\.showPmdMatches/)
+  assert.match(html, /id="tgPmd"/)
+  assert.match(html, /title="Show matched PMD panels"/)
+  assert.match(html, /togChip\('tgPmd',\(\)=>S\.showPmdMatches,v=>S\.showPmdMatches=v/)
+  assert.match(html, /tree\.classList\.toggle\('hide-pmd',!S\.showPmdMatches\)/)
+  assert.match(html, /\.hide-deps \.dep:not\(\.pmd-link\)\{display:none\}/)
+  assert.match(html, /\.hide-pmd \.pmd-link\{display:none\}/)
+  assert.doesNotMatch(html, /statCard\('database','Files'/)
+  assert.doesNotMatch(html, /statCard\('table-2','Tabs'/)
+  assert.doesNotMatch(html, /statCard\('list-tree','Rows read'/)
+})
+
+test('precise hierarchy search results can expand into their full downstream branch', () => {
+  assert.match(html, /const fullKids=kidsOf\(node\),shown=fullKids\.filter\(c=>c\._show&&!nodeHidden\(c\)\)/)
+  assert.match(html, /node\._built=shown\.length===fullKids\.length/)
+  assert.match(html, /if\(!node\._built\)\{\s*kids\.innerHTML=''/)
 })
 
 test('every result tab supports an iPad-friendly full-screen view', () => {

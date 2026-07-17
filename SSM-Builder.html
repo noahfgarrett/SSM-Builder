@@ -197,7 +197,8 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .rowinfo .ic{width:14px;height:14px}
 .row:hover .rowinfo,.row:focus-within .rowinfo,.rowinfo:focus-visible{opacity:1}
 .rowinfo:hover{border-color:var(--accent-400);color:var(--accent-700);background:var(--tint)}
-.hide-deps .dep{display:none}
+.hide-deps .dep:not(.pmd-link){display:none}
+.hide-pmd .pmd-link{display:none}
 .row.is-spare .lbl,.row.is-space .lbl{color:var(--ink-3);font-style:italic}
 .row.is-spare .marker.leaf .ic,.row.is-space .marker.leaf .ic{color:var(--ink-3)}
 #qinfo{font-size:12.5px;color:var(--ink-2);font-family:var(--mono);margin:-4px 0 11px;min-height:16px}
@@ -606,13 +607,22 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.4';
+const APP_VERSION = '1.1.5';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.5',
+    date:'2026-07-17T16:00:00Z',
+    type:'feature',
+    stats:{features:1,improvements:2},
+    notes:`- Added a hierarchy toggle for matched PMD panel labels
+- Removed Files, Tabs, and Rows Read summary cards
+- Improved hierarchy search so matched branches can be expanded to nested equipment`
+  },
   {
     version:'1.1.4',
     date:'2026-07-17T12:00:00Z',
@@ -974,7 +984,7 @@ function initUpdateCheck(){
 
 const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:new Set(),override:{},aoaCache:new Map(),
   roots:[],sheets:[],ssmCombined:[],nodeById:new Map(),stats:null,search:'',idOnly:false,
-  showSpares:true,showSpaces:true,showDeps:true,deps:new Map(),depDetail:new Map(),hasCable:false,
+  showSpares:true,showSpaces:true,showDeps:true,showPmdMatches:true,deps:new Map(),depDetail:new Map(),hasCable:false,
   pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdSuffixMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
   epDetail:new Map(),epNameSet:new Set(),review:[],workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
   cmpFilter:'all',cmpSearch:'',revSearch:'',revSort:null,revMinPct:null,showStats:true,
@@ -1021,7 +1031,7 @@ function restorePanelCache(name,key,el,scrollSel){
   restoreScroll(scrollSel,hit.scroll);
   return true;
 }
-function treePanelCacheKey(){return ['tree',S.search,S.idOnly,S.showSpares,S.showSpaces,S.showDeps,S.roots.length].join(KEYSEP);}
+function treePanelCacheKey(){return ['tree',S.search,S.idOnly,S.showSpares,S.showSpaces,S.showDeps,S.showPmdMatches,S.roots.length].join(KEYSEP);}
 function rememberTreePanel(){
   const el=$('#panel-tree');if(!el)return;
   S.viewCache.tree={key:treePanelCacheKey(),html:el.innerHTML,scroll:panelScroll('.treecard')};
@@ -1779,7 +1789,7 @@ async function buildHierarchy(){
     report(1,'Done');
   });
   if(!S.roots.length){toast('No hierarchy rows found in the selected tabs');return;}
-  S.search='';S.idOnly=false;S.showSpares=true;S.showSpaces=true;S.showDeps=S.hasCable||(S.stats&&S.stats.loads>0);S.tab='tree';go('result');
+  S.search='';S.idOnly=false;S.showSpares=true;S.showSpaces=true;S.showDeps=S.hasCable||(S.stats&&S.stats.loads>0);S.showPmdMatches=true;S.tab='tree';go('result');
 }
 /* Cable Schedule loads with no exact match in Easy Power. Uses normalized-separator
    and prefix-bucket indexes so the fuzzy step stays cheap even on 75k+ names. */
@@ -1852,9 +1862,6 @@ function renderResult(){
   $('#view').innerHTML=`
   <section id="resultShell" class="${S.resultFullscreen?'fullscreen':''}">
     <div class="statwrap ${S.showStats?'':'collapsed'}" id="statwrap"><div class="statbar">
-      ${statCard('database','Files',st.files,true)}
-      ${statCard('table-2','Tabs',st.tabs,true)}
-      ${statCard('list-tree','Rows read',st.rowsRead,true)}
       ${statCard('network','Nodes',st.nodes)}
       ${statCard('tag','ID Names',st.idCount)}
       ${st.loads?statCard('corner-down-right','Loads',st.loads):''}
@@ -1876,6 +1883,7 @@ function renderResult(){
         <button class="chip ${S.showSpares?'on':''}" id="tgSpares" aria-pressed="${S.showSpares}" title="Show spares (SP- prefix)">${ic('square-stack')}Spares</button>
         <button class="chip ${S.showSpaces?'on':''}" id="tgSpaces" aria-pressed="${S.showSpaces}" title="Show spaces (&quot;Space&quot;)">${ic('minus')}Spaces</button>
         ${(S.hasCable||st.loads)?`<button class="chip ${S.showDeps?'on':''}" id="tgDeps" aria-pressed="${S.showDeps}" title="Show dependencies">${ic('spline')}Dependencies</button>`:''}
+        ${st.instruments?`<button class="chip ${S.showPmdMatches?'on':''}" id="tgPmd" aria-pressed="${S.showPmdMatches}" title="Show matched PMD panels">${ic('database')}PMD panels</button>`:''}
       </div>
       <div class="toolbar">
         <button class="btn sm" id="expandAll">${ic('chevrons-down')}Expand all</button>
@@ -1930,6 +1938,7 @@ function wireResult(){
   togChip('tgSpares',()=>S.showSpares,v=>S.showSpares=v,reflow);
   togChip('tgSpaces',()=>S.showSpaces,v=>S.showSpaces=v,reflow);
   togChip('tgDeps',()=>S.showDeps,v=>S.showDeps=v,()=>$('#tree').classList.toggle('hide-deps',!S.showDeps));
+  togChip('tgPmd',()=>S.showPmdMatches,v=>S.showPmdMatches=v,()=>$('#tree').classList.toggle('hide-pmd',!S.showPmdMatches));
 }
 function setResultFullscreen(on){
   on=!!on;S.resultFullscreen=on;
@@ -2276,6 +2285,7 @@ function renderTreeCollapsed(){
   roots.forEach((r,i)=>frag.appendChild(makeNode(r,[],i===roots.length-1,true)));
   tree.appendChild(frag);
   tree.classList.toggle('hide-deps',!S.showDeps);
+  tree.classList.toggle('hide-pmd',!S.showPmdMatches);
   if(!roots.length)tree.innerHTML=`<div class="note info" style="margin:6px">${ic('info')}<div>Nothing to show with the current Spares/Spaces toggles.</div></div>`;
   wireTree(tree);
   rememberTreePanel();
@@ -2284,6 +2294,7 @@ function childPrefix(node){return node._isRoot?[]:node._prefix.concat(!node._isL
 function expandNode(row,node){
   const wrap=row.parentElement,kids=wrap.querySelector(':scope > .kids');
   if(!node._built){
+    kids.innerHTML='';
     const vis=kidsOf(node),cp=childPrefix(node),last=vis.length-1,frag=document.createDocumentFragment();
     vis.forEach((c,i)=>frag.appendChild(makeNode(c,cp,i===last,false)));
     kids.appendChild(frag);node._built=true;
@@ -2374,11 +2385,11 @@ function runSearch(){
 function renderFiltered(hl){
   const tree=$('#tree');tree.innerHTML='';
   const build=(node,prefixArr,isLast,isRoot)=>{
-    node._prefix=prefixArr;node._isLast=isLast;node._isRoot=isRoot;node._built=true;
+    const fullKids=kidsOf(node),shown=fullKids.filter(c=>c._show&&!nodeHidden(c));
+    node._prefix=prefixArr;node._isLast=isLast;node._isRoot=isRoot;node._built=shown.length===fullKids.length;
     const wrap=document.createElement('div');wrap.className='node';
     wrap.innerHTML=rowInner(node,prefixArr,isLast,isRoot,node._self?hl:'')+'<div class="kids"></div>';
     const kids=wrap.querySelector('.kids');
-    const shown=node.children.filter(c=>c._show&&!nodeHidden(c));
     const cp=isRoot?[]:prefixArr.concat(!isLast);
     shown.forEach((c,i)=>kids.appendChild(build(c,cp,i===shown.length-1,false)));
     if(shown.length){const r=wrap.querySelector('.row');r.classList.add('open');r.setAttribute('aria-expanded','true');}
@@ -2389,6 +2400,7 @@ function renderFiltered(hl){
   roots.forEach((r,i)=>frag.appendChild(build(r,[],i===roots.length-1,true)));
   tree.appendChild(frag);
   tree.classList.toggle('hide-deps',!S.showDeps);
+  tree.classList.toggle('hide-pmd',!S.showPmdMatches);
   if(!roots.length)tree.innerHTML=`<div class="note info" style="margin:6px">${ic('search')}<div>Nothing matched. Try a different tag, or turn off <b>ID Names only</b>.</div></div>`;
 }
 
