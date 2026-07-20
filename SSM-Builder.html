@@ -613,13 +613,20 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.9';
+const APP_VERSION = '1.1.10';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.10',
+    date:'2026-07-20T17:03:02Z',
+    type:'fix',
+    stats:{fixes:1},
+    notes:`- Fixed duplicate Equipment IDs appearing in SSM exports by keeping the first hierarchy relationship`
+  },
   {
     version:'1.1.9',
     date:'2026-07-20T16:31:16Z',
@@ -1828,6 +1835,11 @@ function appendPmdSsmRows(rows,includeUnmatched){
   const instrumentRows=links.flatMap(link=>link.instruments.map(rec=>[pmdExportTag(rec.tag,link.building),link.loadName,'']));
   return [...base,...panelRows,...instrumentRows];
 }
+function uniqueSsmRows(rows){
+  const seen=new Set(),out=[];
+  for(const row of rows){const key=tagKey(row&&row[0]);if(!key||seen.has(key))continue;seen.add(key);out.push(row);}
+  return out;
+}
 async function buildHierarchy(){
   const keys=[...S.selected];if(!keys.length)return;
   clearResultCache();
@@ -1892,8 +1904,8 @@ async function buildHierarchy(){
     report(.80,'Linking PMD instruments');await raf();
     const instrumentCount=attachPmdInstruments(combined);
     for(const sh of sheets)_attachPmdInstruments(sh._sMap,null);
-    S.sheets=sheets;S.ssmCombined=appendPmdSsmRows(ssmCombined,true);
-    for(const sh of S.sheets)sh.ssmRows=appendPmdSsmRows(sh.ssmRows,false);
+    S.sheets=sheets;S.ssmCombined=uniqueSsmRows(appendPmdSsmRows(ssmCombined,true));
+    for(const sh of S.sheets)sh.ssmRows=uniqueSsmRows(appendPmdSsmRows(sh.ssmRows,false));
     report(.82,'Finalizing tree');await raf();
     S.roots=finalize(combined); // call last so nodeById matches the displayed combined tree
     // every equipment name in the Easy Power hierarchy (for cable cross-check)
@@ -2608,7 +2620,7 @@ function addSheet(wb,ws,base,used,freezeRows){
   return nm;
 }
 function visDepth(roots){let m=0;const w=n=>{if(n.depth>m)m=n.depth;kidsOf(n).forEach(w);};roots.forEach(w);return m+1;}
-function filterSsm(rows){return rows.filter(([e])=>!((isSpareName(e)&&!S.showSpares)||(isSpaceName(e)&&!S.showSpaces)));}
+function filterSsm(rows){return uniqueSsmRows(rows).filter(([e])=>!((isSpareName(e)&&!S.showSpares)||(isSpaceName(e)&&!S.showSpaces)));}
 function safeSheetName(base,used){
   let name=String(base).replace(/[\\\/\?\*\[\]:]/g,' ').replace(/\s+/g,' ').trim().slice(0,31)||'Sheet';
   if(!used.has(name.toLowerCase())){used.add(name.toLowerCase());return name;}

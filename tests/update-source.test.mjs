@@ -192,8 +192,8 @@ test('PMD rows are appended to SSM data with panels before instruments', () => {
   assert.match(html, /const panelRows=links\.map\(link=>\[link\.loadName,'',existingDeps\.get\(link\.loadKey\)\|\|depOf\(link\.loadName\)\|\|depOf\(link\.panel\)\|\|''\]\)/)
   assert.match(html, /const instrumentRows=links\.flatMap\(link=>link\.instruments\.map\(rec=>\[pmdExportTag\(rec\.tag,link\.building\),link\.loadName,''\]\)\)/)
   assert.match(html, /return \[\.\.\.base,\.\.\.panelRows,\.\.\.instrumentRows\]/)
-  assert.match(html, /S\.ssmCombined=appendPmdSsmRows\(ssmCombined,true\)/)
-  assert.match(html, /sh\.ssmRows=appendPmdSsmRows\(sh\.ssmRows,false\)/)
+  assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(ssmCombined,true\)\)/)
+  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(sh\.ssmRows,false\)\)/)
 })
 
 test('PMD base panels link to both CPS and NPS load variants with duplicated instruments', () => {
@@ -432,6 +432,27 @@ test('comparison and SSM exports replace duplicated dependency values with N/A',
   assert.equal((html.match(/const \{equip,parent,dep\}=ssmRegisterResolve\(r\)/g) || []).length, 2)
   assert.match(html, /function registerDisplayValue\(value\)/)
   assert.match(html, /compareMakeCell\(a,b\).*registerDisplayValue\(a\).*registerDisplayValue\(b\)/)
+})
+
+test('SSM registers keep one normalized Equipment ID across hierarchy and PMD rows', () => {
+  assert.match(html, /function uniqueSsmRows\(rows\)\{/)
+  assert.match(html, /const seen=new Set\(\),out=\[\];/)
+  assert.match(html, /const key=tagKey\(row&&row\[0\]\);if\(!key\|\|seen\.has\(key\)\)continue;seen\.add\(key\);out\.push\(row\)/)
+  assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(ssmCombined,true\)\)/)
+  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(sh\.ssmRows,false\)\)/)
+  assert.match(html, /function filterSsm\(rows\)\{return uniqueSsmRows\(rows\)\.filter/)
+  const value = runInNewContext(`${customScript}
+    JSON.stringify(uniqueSsmRows([
+      ['TAG-P','FIRST-PARENT','FIRST-DEP'],
+      ['tag','SECOND-PARENT','SECOND-DEP'],
+      ['OTHER-S','OTHER-PARENT',''],
+      ['other-p','DUPLICATE-PARENT','']
+    ]));
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), [
+    ['TAG-P', 'FIRST-PARENT', 'FIRST-DEP'],
+    ['OTHER-S', 'OTHER-PARENT', ''],
+  ])
 })
 
 test('LotusWorks logo is embedded in the single HTML header', () => {
