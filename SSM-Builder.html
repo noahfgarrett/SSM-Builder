@@ -613,13 +613,21 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.13';
+const APP_VERSION = '1.1.14';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.14',
+    date:'2026-07-20T19:28:49Z',
+    type:'fix',
+    stats:{fixes:2},
+    notes:`- Fixed comparisons marking an N/A working dependency as different when the extracted dependency matches both parents
+- Fixed working-copy tags with trailing bracketed notes being marked as different`
+  },
   {
     version:'1.1.13',
     date:'2026-07-20T17:42:22Z',
@@ -1991,8 +1999,17 @@ function ssmResolve(r){
   return {equip:e,parent:par,dep,keepDuplicateDep:!!meta.keepDuplicateDep};
 }
 function registerCompareKey(value){const v=clean(value).toLowerCase();return (!v||v==='n/a'||v==='-'||v==='—')?'':v;}
+function workingRegisterCompareKey(value){return registerCompareKey(cleanTag(clean(value).replace(/(?:\s*\[[^\]]*\])+\s*$/,'')));}
 function registerDisplayValue(value){return registerCompareKey(value)===''?'N/A':clean(value);}
 function sameRegisterValue(a,b){return registerCompareKey(a)===registerCompareKey(b);}
+function sameWorkingRegisterValue(extracted,working){return registerCompareKey(extracted)===workingRegisterCompareKey(working);}
+function isAcceptedMissingWorkingDependency(curParent,curDep,wcParent,wcDep){
+  return registerCompareKey(curParent)!==''&&sameWorkingRegisterValue(curParent,wcParent)&&!sameWorkingRegisterValue(curDep,wcDep)
+    &&sameRegisterValue(curDep,curParent)&&sameWorkingRegisterValue(curDep,wcParent)&&workingRegisterCompareKey(wcDep)==='';
+}
+function comparisonValuesMatch(curParent,curDep,wcParent,wcDep){
+  return sameWorkingRegisterValue(curParent,wcParent)&&(sameWorkingRegisterValue(curDep,wcDep)||isAcceptedMissingWorkingDependency(curParent,curDep,wcParent,wcDep));
+}
 function registerDepValue(parent,dep,keepDuplicate){
   const d=clean(dep);
   return d&&!keepDuplicate&&sameRegisterValue(parent,d)?'N/A':d;
@@ -2003,9 +2020,8 @@ async function buildComparison(report){
   S.compare=[];S.compareBuckets={all:[],off:[],nohit:[],match:[]};if(!S.wcRows)return;
   resetYield();
   const total=Math.max(1,S.ssmCombined.length+S.wcRows.length+S.ssmCombined.length);let cdone=0;
-  const cur=new Map();for(const r of S.ssmCombined){const o=ssmResolve(r);cur.set(o.equip.toLowerCase(),o);cdone++;if(report)await maybeYield(report,.96+.03*(cdone/total),'Comparing working copy');}
-  const wc=new Map();for(const o of S.wcRows)wc.set(o.equip.toLowerCase(),o);
-  const eq=sameRegisterValue;
+  const cur=new Map();for(const r of S.ssmCombined){const o=ssmResolve(r);cur.set(registerCompareKey(o.equip),o);cdone++;if(report)await maybeYield(report,.96+.03*(cdone/total),'Comparing working copy');}
+  const wc=new Map();for(const o of S.wcRows)wc.set(workingRegisterCompareKey(o.equip),o);
   const keys=new Set([...cur.keys(),...wc.keys()]);
   for(const k of keys){
     cdone++;if(report)await maybeYield(report,.96+.03*(cdone/total),'Comparing working copy');
@@ -2014,11 +2030,12 @@ async function buildComparison(report){
     const curDep=a?registerDepValue(a.parent,a.dep,a.keepDuplicateDep):'';
     const wcParent=b?b.parent:'';
     const wcDep=b?registerDepValue(b.parent,b.dep,!!(a&&a.keepDuplicateDep)):'';
-    if(a&&b)status=(eq(curParent,wcParent)&&eq(curDep,wcDep))?'match':'off';
+    const acceptedDepMismatch=!!(a&&b&&isAcceptedMissingWorkingDependency(curParent,curDep,wcParent,wcDep));
+    if(a&&b)status=comparisonValuesMatch(curParent,curDep,wcParent,wcDep)?'match':'off';
     else status='nohit';
     const rec={equip:a?a.equip:b.equip,
       curParent,curDep,wcParent,wcDep,
-      inCur:!!a,inWc:!!b,status};
+      inCur:!!a,inWc:!!b,status,acceptedDepMismatch};
     S.compare.push({...rec,searchKey:compareSearchKey(rec)});
   }
   S.compare.sort((x,y)=>({off:0,nohit:1,match:2}[x.status]-{off:0,nohit:1,match:2}[y.status])||natCmp(x.equip,y.equip));
@@ -2318,7 +2335,7 @@ function comparePanelCacheKey(){return comparePanelCacheKeyFor(S.cmpFilter,S.cmp
 function compareRowsCacheKey(filter,search,diff,sort){return ['compareRows',S.compare.length,filter,search,diff,compareSortKey(sort)].join(KEYSEP);}
 function compareDiffMatch(r,diff){
   if(diff==='all')return true;
-  const parent=!sameRegisterValue(r.curParent,r.wcParent),dep=!sameRegisterValue(r.curDep,r.wcDep);
+  const parent=!sameWorkingRegisterValue(r.curParent,r.wcParent),dep=!r.acceptedDepMismatch&&!sameWorkingRegisterValue(r.curDep,r.wcDep);
   return diff==='parent'?parent:diff==='dep'?dep:parent&&dep;
 }
 function sortCompareList(rows,sort){
@@ -2341,10 +2358,10 @@ function compareRowsFor(filter,search,diff,sort){
   return sortCompareList(rows,sort);
 }
 function compareRows(){return compareRowsFor(S.cmpFilter,S.cmpSearch,S.cmpDiff,S.cmpSort);}
-function compareMakeCell(a,b){const diff=!sameRegisterValue(a,b);return `<td class="mono ${diff?'diff':''}">${esc(registerDisplayValue(a))}</td><td class="mono ${diff?'diff':''}">${esc(registerDisplayValue(b))}</td>`;}
+function compareMakeCell(a,b,accepted){const diff=!accepted&&!sameWorkingRegisterValue(a,b);return `<td class="mono ${diff?'diff':''}">${esc(registerDisplayValue(a))}</td><td class="mono ${diff?'diff':''}">${esc(registerDisplayValue(b))}</td>`;}
 function compareMakeRow(r){
   const sub=r.status==='nohit'?`<span class="subtle">${r.inCur?'only in extracted':'only in working copy'}</span>`:'';
-  return `<tr class="r-${r.status}"><td class="mono">${esc(r.equip)}</td><td><span class="cbadge ${r.status}">${ic(CMP_ICON[r.status])}${CMP_LABEL[r.status]}</span>${sub}</td>${compareMakeCell(r.curParent,r.wcParent)}${compareMakeCell(r.curDep,r.wcDep)}</tr>`;
+  return `<tr class="r-${r.status}"><td class="mono">${esc(r.equip)}</td><td><span class="cbadge ${r.status}">${ic(CMP_ICON[r.status])}${CMP_LABEL[r.status]}</span>${sub}</td>${compareMakeCell(r.curParent,r.wcParent)}${compareMakeCell(r.curDep,r.wcDep,r.acceptedDepMismatch)}</tr>`;
 }
 function getCompareRowsCache(filter,search,diff,sort){
   const key=compareRowsCacheKey(filter,search,diff,sort),hit=cacheGet(S.viewCache.compareRows,key);
@@ -2765,8 +2782,8 @@ function addCompareSheet(wb,used){
     const R=i+1;
     const st=ws[XLSX.utils.encode_cell({r:R,c:1})];if(st&&CMP_STYLE[st.v])st.s=CMP_STYLE[st.v];
     if(r.status==='off'){                                    // highlight the values that differ
-      if(!sameRegisterValue(r.curParent,r.wcParent)){for(const C of[2,3]){const c=ws[XLSX.utils.encode_cell({r:R,c:C})];if(c)c.s=XL_DIFF;}}
-      if(!sameRegisterValue(r.curDep,r.wcDep)){for(const C of[4,5]){const c=ws[XLSX.utils.encode_cell({r:R,c:C})];if(c)c.s=XL_DIFF;}}
+      if(!sameWorkingRegisterValue(r.curParent,r.wcParent)){for(const C of[2,3]){const c=ws[XLSX.utils.encode_cell({r:R,c:C})];if(c)c.s=XL_DIFF;}}
+      if(!sameWorkingRegisterValue(r.curDep,r.wcDep)){for(const C of[4,5]){const c=ws[XLSX.utils.encode_cell({r:R,c:C})];if(c)c.s=XL_DIFF;}}
     }
   });
   styleHeaderRow(ws,0);setFilter(ws,0);

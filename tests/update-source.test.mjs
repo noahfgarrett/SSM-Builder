@@ -450,7 +450,7 @@ test('review tab groups columns by their source system', () => {
   assert.doesNotMatch(html, /Source \/ Downstream \/ ID Name/)
 })
 
-test('comparison and SSM exports replace duplicated dependency values with N/A', () => {
+test('comparison accepts a missing working dependency when extracted parent and dependency match', () => {
   assert.match(html, /function registerCompareKey\(value\)/)
   assert.match(html, /function sameRegisterValue\(a,b\)\{return registerCompareKey\(a\)===registerCompareKey\(b\);\}/)
   assert.match(html, /function registerDepValue\(parent,dep,keepDuplicate\)\{/)
@@ -460,10 +460,47 @@ test('comparison and SSM exports replace duplicated dependency values with N/A',
   assert.match(html, /const curDep=a\?registerDepValue\(a\.parent,a\.dep,a\.keepDuplicateDep\):''/)
   assert.match(html, /const wcParent=b\?b\.parent:''/)
   assert.match(html, /const wcDep=b\?registerDepValue\(b\.parent,b\.dep,!!\(a&&a\.keepDuplicateDep\)\):''/)
-  assert.match(html, /status=\(eq\(curParent,wcParent\)&&eq\(curDep,wcDep\)\)\?'match':'off'/)
+  assert.match(html, /function isAcceptedMissingWorkingDependency\(curParent,curDep,wcParent,wcDep\)/)
+  assert.match(html, /sameRegisterValue\(curDep,curParent\)&&sameWorkingRegisterValue\(curDep,wcParent\)&&workingRegisterCompareKey\(wcDep\)===''/)
+  assert.match(html, /function comparisonValuesMatch\(curParent,curDep,wcParent,wcDep\)/)
+  assert.match(html, /status=comparisonValuesMatch\(curParent,curDep,wcParent,wcDep\)\?'match':'off'/)
+  assert.match(html, /acceptedDepMismatch=!!\(a&&b&&isAcceptedMissingWorkingDependency/)
+  assert.match(html, /dep=!r\.acceptedDepMismatch&&!sameWorkingRegisterValue\(r\.curDep,r\.wcDep\)/)
   assert.equal((html.match(/const \{equip,parent,dep\}=ssmRegisterResolve\(r\)/g) || []).length, 2)
   assert.match(html, /function registerDisplayValue\(value\)/)
-  assert.match(html, /compareMakeCell\(a,b\).*registerDisplayValue\(a\).*registerDisplayValue\(b\)/)
+  assert.match(html, /compareMakeCell\(a,b,accepted\).*registerDisplayValue\(a\).*registerDisplayValue\(b\)/)
+  assert.match(html, /compareMakeCell\(r\.curDep,r\.wcDep,r\.acceptedDepMismatch\)/)
+  const value = runInNewContext(`${customScript}
+    JSON.stringify([
+      comparisonValuesMatch('ID-100','ID-100','ID-100','N/A'),
+      comparisonValuesMatch('ID-100','ID-100','OTHER','N/A'),
+      comparisonValuesMatch('ID-100','OTHER','ID-100','N/A'),
+      comparisonValuesMatch('ID-100','ID-100','ID-100','OTHER'),
+      comparisonValuesMatch('ID-100','ID-100','ID-100','ID-100')
+    ]);
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), [true, false, false, false, true])
+})
+
+test('comparison accepts trailing bracketed qualifiers only on working-copy tags', () => {
+  assert.match(html, /function workingRegisterCompareKey\(value\)/)
+  assert.match(html, /function sameWorkingRegisterValue\(extracted,working\)/)
+  assert.match(html, /cur\.set\(registerCompareKey\(o\.equip\),o\)/)
+  assert.match(html, /wc\.set\(workingRegisterCompareKey\(o\.equip\),o\)/)
+  assert.match(html, /parent=!sameWorkingRegisterValue\(r\.curParent,r\.wcParent\)/)
+  assert.match(html, /compareMakeCell\(a,b,accepted\).*sameWorkingRegisterValue\(a,b\)/)
+  const value = runInNewContext(`${customScript}
+    JSON.stringify([
+      sameWorkingRegisterValue('TAG-100','TAG-100 [Existing]'),
+      sameWorkingRegisterValue('TAG-100','TAG-100[Existing]'),
+      sameWorkingRegisterValue('TAG-100','TAG-100 [Existing] [Legacy]'),
+      sameWorkingRegisterValue('TAG-100','TAG-100-P [Existing]'),
+      sameWorkingRegisterValue('TAG-100','TAG-101 [TAG-100]'),
+      sameWorkingRegisterValue('TAG-100 [Extracted]','TAG-100'),
+      workingRegisterCompareKey('N/A [Legacy]')
+    ]);
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), [true, true, true, true, false, false, ''])
 })
 
 test('SSM registers keep one normalized Equipment ID across hierarchy and PMD rows', () => {
