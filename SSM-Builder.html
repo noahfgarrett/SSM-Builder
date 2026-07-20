@@ -234,13 +234,6 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .row.root .lbl{font-weight:680;font-size:14px;letter-spacing:-.2px}
 .lbl-leaf{color:var(--ink-2)}
 .cnt{align-self:center;margin-left:4px;font-size:10.5px;color:var(--ink-3);background:var(--surface-3);border:1px solid var(--border);padding:1px 7px;border-radius:99px;font-weight:600}
-.cnt.filtered{color:#1d4ed8;background:#eff6ff;border-color:#bfdbfe}
-.branch-more{display:flex;align-items:stretch;min-height:44px}
-.branch-node-space{width:44px;flex:0 0 44px}
-.branch-reveal{min-height:44px;display:inline-flex;align-items:center;gap:7px;margin:1px 0;padding:5px 10px 5px 7px;border:0;border-radius:7px;background:transparent;color:#2563eb;font:600 12px var(--sans);cursor:pointer;text-align:left}
-.branch-reveal .ic{width:15px;height:15px}
-.branch-reveal:hover{background:#eff6ff;color:#1d4ed8}
-.branch-reveal:focus-visible{outline:none;box-shadow:var(--ring);background:#eff6ff}
 .node.search-extra > .row{opacity:.52}
 .node.search-extra > .row:hover,.node.search-extra > .row:focus-within{opacity:.78}
 .row.root{padding-left:2px}
@@ -440,6 +433,10 @@ body.result-fullscreen{overflow:hidden}
 .pctmin .ic{width:14px;height:14px;color:var(--ink-3)}
 .pctmin input{width:46px;border:none;background:transparent;font:inherit;color:var(--accent-700);font-weight:700;text-align:right;padding:0;outline:none}
 .pctmin input::-webkit-outer-spin-button,.pctmin input::-webkit-inner-spin-button{margin-left:2px}
+.selectctl{height:40px;display:inline-flex;align-items:center;gap:7px;padding:0 9px;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius-sm);box-shadow:var(--shadow-sm);color:var(--ink-2)}
+.selectctl .ic{width:15px;height:15px;color:var(--ink-3)}
+.selectctl select{min-width:142px;border:0;background:transparent;color:var(--ink);font:600 12.5px var(--sans);outline:none;cursor:pointer}
+.selectctl:focus-within{border-color:var(--accent-400);box-shadow:var(--ring)}
 .pct{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
 .pct.hi{color:var(--ok,#1d7a4d);font-weight:700}
 .muted{color:var(--ink-3)}
@@ -604,7 +601,6 @@ var XLSX={};function make_xlsx_lib(a){a.version="0.18.5",a.style_version="1.2.0"
 const ICONS = {"upload":"<path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline points=\"17 8 12 3 7 8\"/><line x1=\"12\" x2=\"12\" y1=\"3\" y2=\"15\"/>","file-spreadsheet":"<path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"/><path d=\"M8 13h2\"/><path d=\"M14 13h2\"/><path d=\"M8 17h2\"/><path d=\"M14 17h2\"/>","file-text":"<path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"/><path d=\"M10 9H8\"/><path d=\"M16 13H8\"/><path d=\"M16 17H8\"/>","file":"<path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"/>","x":"<path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/>","check":"<path d=\"M20 6 9 17l-5-5\"/>","check-check":"<path d=\"M18 6 7 17l-5-5\"/><path d=\"m22 10-7.5 7.5L13 16\"/>","search":"<circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/>","chevron-right":"<path d=\"m9 18 6-6-6-6\"/>","chevron-down":"<path d=\"m6 9 6 6 6-6\"/>","chevrons-down":"<path d=\"m7 6 5 5 5-5\"/><path d=\"m7 13 5 5 5-5\"/>","chevrons-up":"<path d=\"m17 11-5-5-5 5\"/><path d=\"m17 18-5-5-5 5\"/>","download":"<path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline points=\"7 10 12 15 17 10\"/><line x1=\"12\" x2=\"12\" y1=\"15\" y2=\"3\"/>","arrow-left":"<path d=\"m12 19-7-7 7-7\"/><path d=\"M19 12H5\"/>","zap":"<path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"/>","git-branch":"<line x1=\"6\" x2=\"6\" y1=\"3\" y2=\"15\"/><circle cx=\"18\" cy=\"6\" r=\"3\"/><circle cx=\"6\" cy=\"18\" r=\"3\"/><path d=\"M18 9a9 9 0 0 1-9 9\"/>","tag":"<path d=\"M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z\"/><circle cx=\"7.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>","layers":"<path d=\"m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z\"/><path d=\"m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65\"/><path d=\"m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65\"/>","list-tree":"<path d=\"M21 12h-8\"/><path d=\"M21 6H8\"/><path d=\"M21 18h-8\"/><path d=\"M3 6v4c0 1.1.9 2 2 2h3\"/><path d=\"M3 10v6c0 1.1.9 2 2 2h3\"/>","network":"<rect x=\"16\" y=\"16\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"2\" y=\"16\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"9\" y=\"2\" width=\"6\" height=\"6\" rx=\"1\"/><path d=\"M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3\"/><path d=\"M12 12V8\"/>","hash":"<line x1=\"4\" x2=\"20\" y1=\"9\" y2=\"9\"/><line x1=\"4\" x2=\"20\" y1=\"15\" y2=\"15\"/><line x1=\"10\" x2=\"8\" y1=\"3\" y2=\"21\"/><line x1=\"16\" x2=\"14\" y1=\"3\" y2=\"21\"/>","triangle-alert":"<path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\"/><path d=\"M12 9v4\"/><path d=\"M12 17h.01\"/>","loader-circle":"<path d=\"M21 12a9 9 0 1 1-6.219-8.56\"/>","table-2":"<path d=\"M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18\"/>","sliders-horizontal":"<line x1=\"21\" x2=\"14\" y1=\"4\" y2=\"4\"/><line x1=\"10\" x2=\"3\" y1=\"4\" y2=\"4\"/><line x1=\"21\" x2=\"12\" y1=\"12\" y2=\"12\"/><line x1=\"8\" x2=\"3\" y1=\"12\" y2=\"12\"/><line x1=\"21\" x2=\"16\" y1=\"20\" y2=\"20\"/><line x1=\"12\" x2=\"3\" y1=\"20\" y2=\"20\"/><line x1=\"14\" x2=\"14\" y1=\"2\" y2=\"6\"/><line x1=\"8\" x2=\"8\" y1=\"10\" y2=\"14\"/><line x1=\"16\" x2=\"16\" y1=\"18\" y2=\"22\"/>","info":"<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 16v-4\"/><path d=\"M12 8h.01\"/>","trash-2":"<path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" x2=\"10\" y1=\"11\" y2=\"17\"/><line x1=\"14\" x2=\"14\" y1=\"11\" y2=\"17\"/>","file-json":"<path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"/><path d=\"M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1\"/><path d=\"M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1\"/>","file-down":"<path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"/><path d=\"M12 18v-6\"/><path d=\"m9 15 3 3 3-3\"/>","plus":"<path d=\"M5 12h14\"/><path d=\"M12 5v14\"/>","rotate-ccw":"<path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path d=\"M3 3v5h5\"/>","circle-check":"<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m9 12 2 2 4-4\"/>","folder-tree":"<path d=\"M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z\"/><path d=\"M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z\"/><path d=\"M3 5a2 2 0 0 0 2 2h3\"/><path d=\"M3 3v13a2 2 0 0 0 2 2h3\"/>","corner-down-right":"<polyline points=\"15 10 20 15 15 20\"/><path d=\"M4 4v7a4 4 0 0 0 4 4h12\"/>","filter":"<polygon points=\"22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3\"/>","minus":"<path d=\"M5 12h14\"/>","database":"<ellipse cx=\"12\" cy=\"5\" rx=\"9\" ry=\"3\"/><path d=\"M3 5V19A9 3 0 0 0 21 19V5\"/><path d=\"M3 12A9 3 0 0 0 21 12\"/>","square-stack":"<path d=\"M4 10c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2\"/><path d=\"M10 16c-1.1 0-2-.9-2-2v-4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2\"/><rect width=\"8\" height=\"8\" x=\"14\" y=\"14\" rx=\"2\"/>","spline":"<circle cx=\"19\" cy=\"5\" r=\"2\"/><circle cx=\"5\" cy=\"19\" r=\"2\"/><path d=\"M5 17A12 12 0 0 1 17 5\"/>","panel-left-close":"<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path d=\"M9 3v18\"/><path d=\"m16 15-3-3 3-3\"/>"};
 ICONS['maximize-2']='<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/>';
 ICONS['minimize-2']='<polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" x2="21" y1="10" y2="3"/><line x1="3" x2="10" y1="21" y2="14"/>';
-ICONS['eye']='<path d="M2.06 12.35a1 1 0 0 1 0-.7 10.5 10.5 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.5 10.5 0 0 1-19.88 0"/><circle cx="12" cy="12" r="3"/>';
 const $=(s,r=document)=>r.querySelector(s);
 const $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -617,13 +613,21 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.6';
+const APP_VERSION = '1.1.7';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.7',
+    date:'2026-07-20T12:00:00Z',
+    type:'feature',
+    stats:{features:1,improvements:1},
+    notes:`- Improved hierarchy search to show non-matching sibling equipment automatically
+- Added difference filters and sortable columns to the Comparison tab`
+  },
   {
     version:'1.1.6',
     date:'2026-07-17T18:30:00Z',
@@ -1001,11 +1005,11 @@ function initUpdateCheck(){
 }
 
 const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:new Set(),override:{},aoaCache:new Map(),
-  roots:[],sheets:[],ssmCombined:[],nodeById:new Map(),stats:null,search:'',searchBranches:new Set(),idOnly:false,
+  roots:[],sheets:[],ssmCombined:[],nodeById:new Map(),stats:null,search:'',idOnly:false,
   showSpares:true,showSpaces:true,showDeps:true,showPmdMatches:true,deps:new Map(),depDetail:new Map(),hasCable:false,
   pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdSuffixMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
   epDetail:new Map(),epNameSet:new Set(),review:[],workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
-  cmpFilter:'all',cmpSearch:'',revSearch:'',revSort:null,revMinPct:null,showStats:true,
+  cmpFilter:'all',cmpSearch:'',cmpDiff:'all',cmpSort:null,revSearch:'',revSort:null,revMinPct:null,showStats:true,
   resultFullscreen:false,
   viewCache:{tree:null,review:new Map(),reviewRows:new Map(),compare:new Map(),compareRows:new Map()}};
 let _uid=0,_nid=0;
@@ -1049,7 +1053,7 @@ function restorePanelCache(name,key,el,scrollSel){
   restoreScroll(scrollSel,hit.scroll);
   return true;
 }
-function treePanelCacheKey(){return ['tree',S.search,[...S.searchBranches].sort().join(','),S.idOnly,S.showSpares,S.showSpaces,S.showDeps,S.showPmdMatches,S.roots.length].join(KEYSEP);}
+function treePanelCacheKey(){return ['tree',S.search,S.idOnly,S.showSpares,S.showSpaces,S.showDeps,S.showPmdMatches,S.roots.length].join(KEYSEP);}
 function rememberTreePanel(){
   const el=$('#panel-tree');if(!el)return;
   S.viewCache.tree={key:treePanelCacheKey(),html:el.innerHTML,scroll:panelScroll('.treecard')};
@@ -1807,7 +1811,8 @@ async function buildHierarchy(){
     report(1,'Done');
   });
   if(!S.roots.length){toast('No hierarchy rows found in the selected tabs');return;}
-  S.search='';S.searchBranches.clear();S.idOnly=false;S.showSpares=true;S.showSpaces=true;S.showDeps=S.hasCable||(S.stats&&S.stats.loads>0);S.showPmdMatches=true;S.tab='tree';go('result');
+  S.search='';S.idOnly=false;S.showSpares=true;S.showSpaces=true;S.showDeps=S.hasCable||(S.stats&&S.stats.loads>0);S.showPmdMatches=true;
+  S.cmpFilter='all';S.cmpSearch='';S.cmpDiff='all';S.cmpSort=null;S.tab='tree';go('result');
 }
 /* Cable Schedule loads with no exact match in Easy Power. Uses normalized-separator
    and prefix-bucket indexes so the fuzzy step stays cheap even on 75k+ names. */
@@ -1948,10 +1953,10 @@ function wireResult(){
     stg.innerHTML=`${ic(S.showStats?'chevrons-up':'chevrons-down')}<span>${S.showStats?'Hide stats':'Show stats'}</span>`;
   };
   const q=$('#q'),qx=$('#qx');let dt;
-  q.addEventListener('input',()=>{qx.classList.toggle('show',!!q.value);clearTimeout(dt);dt=setTimeout(()=>{const next=q.value.trim();if(next!==S.search)S.searchBranches.clear();S.search=next;runSearch();},300);});
-  qx.onclick=()=>{q.value='';qx.classList.remove('show');S.search='';S.searchBranches.clear();runSearch();q.focus();};
+  q.addEventListener('input',()=>{qx.classList.toggle('show',!!q.value);clearTimeout(dt);dt=setTimeout(()=>{S.search=q.value.trim();runSearch();},300);});
+  qx.onclick=()=>{q.value='';qx.classList.remove('show');S.search='';runSearch();q.focus();};
   const togChip=(id,get,set,after)=>{const el=$('#'+id);if(!el)return;el.onclick=()=>{const v=!get();set(v);el.classList.toggle('on',v);el.setAttribute('aria-pressed',v);after();};};
-  const reflow=()=>{S.searchBranches.clear();if(S.search)runSearch();else renderTreeCollapsed();};
+  const reflow=()=>{if(S.search)runSearch();else renderTreeCollapsed();};
   togChip('idOnly',()=>S.idOnly,v=>S.idOnly=v,reflow);
   togChip('tgSpares',()=>S.showSpares,v=>S.showSpares=v,reflow);
   togChip('tgSpaces',()=>S.showSpaces,v=>S.showSpaces=v,reflow);
@@ -2159,33 +2164,52 @@ const CMP_LABEL={match:'Matching',off:'Non-Matching',nohit:'No Comparison'};
 const CMP_ICON={match:'check-check',off:'triangle-alert',nohit:'minus'};
 function cmpCounts(){const b=S.compareBuckets||{};return {off:(b.off||[]).length,nohit:(b.nohit||[]).length,match:(b.match||[]).length};}
 function compareSearchKey(r){return [r.equip,r.curParent,r.wcParent,r.curDep,r.wcDep].map(clean).join(' ').toLowerCase();}
-function comparePanelCacheKeyFor(filter,search){return ['compare',S.compare.length,filter,search].join(KEYSEP);}
-function comparePanelCacheKey(){return comparePanelCacheKeyFor(S.cmpFilter,S.cmpSearch);}
-function compareRowsCacheKey(filter,search){return ['compareRows',S.compare.length,filter,search].join(KEYSEP);}
-function compareRowsFor(filter,search){
+function compareSortKey(sort){return sort?sort.col+':'+sort.dir:'';}
+function comparePanelCacheKeyFor(filter,search,diff,sort){return ['compare',S.compare.length,filter,search,diff,compareSortKey(sort)].join(KEYSEP);}
+function comparePanelCacheKey(){return comparePanelCacheKeyFor(S.cmpFilter,S.cmpSearch,S.cmpDiff,S.cmpSort);}
+function compareRowsCacheKey(filter,search,diff,sort){return ['compareRows',S.compare.length,filter,search,diff,compareSortKey(sort)].join(KEYSEP);}
+function compareDiffMatch(r,diff){
+  if(diff==='all')return true;
+  const parent=!sameRegisterValue(r.curParent,r.wcParent),dep=!sameRegisterValue(r.curDep,r.wcDep);
+  return diff==='parent'?parent:diff==='dep'?dep:parent&&dep;
+}
+function sortCompareList(rows,sort){
+  if(!sort)return rows;
+  const dir=sort.dir==='desc'?-1:1,statusOrder={off:0,nohit:1,match:2};
+  const val=r=>sort.col==='equip'?r.equip:sort.col==='status'?statusOrder[r.status]
+    :sort.col==='curParent'?r.curParent:sort.col==='wcParent'?r.wcParent
+    :sort.col==='curDep'?r.curDep:r.wcDep;
+  return [...rows].sort((a,b)=>{
+    const av=val(a),bv=val(b),n=sort.col==='status'?(av-bv):natCmp(av,bv);
+    return n*dir||natCmp(a.equip,b.equip);
+  });
+}
+function compareRowsFor(filter,search,diff,sort){
   const q=clean(search).toLowerCase();
   const base=(S.compareBuckets&&S.compareBuckets[filter])||S.compare;
-  if(!q)return base;
-  return base.filter(r=>r.searchKey.includes(q));
+  let rows=base;
+  if(q)rows=rows.filter(r=>r.searchKey.includes(q));
+  if(diff!=='all')rows=rows.filter(r=>compareDiffMatch(r,diff));
+  return sortCompareList(rows,sort);
 }
-function compareRows(){return compareRowsFor(S.cmpFilter,S.cmpSearch);}
+function compareRows(){return compareRowsFor(S.cmpFilter,S.cmpSearch,S.cmpDiff,S.cmpSort);}
 function compareMakeCell(a,b){const diff=clean(a).toLowerCase()!==clean(b).toLowerCase();return `<td class="mono ${diff?'diff':''}">${esc(a)||'—'}</td><td class="mono ${diff?'diff':''}">${esc(b)||'—'}</td>`;}
 function compareMakeRow(r){
   const sub=r.status==='nohit'?`<span class="subtle">${r.inCur?'only in extracted':'only in working copy'}</span>`:'';
   return `<tr class="r-${r.status}"><td class="mono">${esc(r.equip)}</td><td><span class="cbadge ${r.status}">${ic(CMP_ICON[r.status])}${CMP_LABEL[r.status]}</span>${sub}</td>${compareMakeCell(r.curParent,r.wcParent)}${compareMakeCell(r.curDep,r.wcDep)}</tr>`;
 }
-function getCompareRowsCache(filter,search){
-  const key=compareRowsCacheKey(filter,search),hit=cacheGet(S.viewCache.compareRows,key);
+function getCompareRowsCache(filter,search,diff,sort){
+  const key=compareRowsCacheKey(filter,search,diff,sort),hit=cacheGet(S.viewCache.compareRows,key);
   if(hit)return hit;
-  const rows=compareRowsFor(filter,search),rec={key,filter,search,rows,total:rows.length,html:[],prewarmed:false};
+  const rows=compareRowsFor(filter,search,diff,sort),rec={key,filter,search,diff,sort,rows,total:rows.length,html:[],prewarmed:false};
   cacheSet(S.viewCache.compareRows,key,rec);
   return rec;
 }
 function renderCompareRowsVirtual(rec,key,el){
   mountVirtualRows('#cmpBody',rec.rows,compareMakeRow,`<tr><td colspan="6" class="empty">No rows match.</td></tr>`,{card:'#cmpCard',ind:'#cmpInd',colspan:6,cacheName:'compare',key,panel:el,scrollSel:'#cmpCard',htmlCache:rec.html});
 }
-async function prewarmCompareRows(filter,search,token){
-  const rec=getCompareRowsCache(filter,search);
+async function prewarmCompareRows(filter,search,diff,sort,token){
+  const rec=getCompareRowsCache(filter,search,diff,sort);
   if(rec.prewarmed)return;
   const end=Math.min(rec.rows.length,VIRTUAL_MAX_DOM_ROWS);
   for(let i=0;i<end;i++){
@@ -2195,19 +2219,19 @@ async function prewarmCompareRows(filter,search,token){
   }
   rec.prewarmed=true;
 }
-function scheduleComparePrewarm(activeFilter,search){
+function scheduleComparePrewarm(activeFilter,search,diff,sort){
   if(!S.wcRows||!S.compare.length)return;
   const token=++_cmpPrewarmTok;
   const order=[activeFilter,...CMP_FILTERS.filter(f=>f!==activeFilter)];
   (async()=>{
     for(const filter of order){
       if(token!==_cmpPrewarmTok)return;
-      getCompareRowsCache(filter,search);
+      getCompareRowsCache(filter,search,diff,sort);
       await idleFrame();
     }
     for(const filter of order){
       if(token!==_cmpPrewarmTok)return;
-      await prewarmCompareRows(filter,search,token);
+      await prewarmCompareRows(filter,search,diff,sort,token);
       await idleFrame();
     }
   })();
@@ -2216,19 +2240,28 @@ function refreshCompare(){
   if(!S.wcRows)return;
   const el=$('#panel-compare'),key=comparePanelCacheKey();
   markPanelCachePending(el,key);
-  renderCompareRowsVirtual(getCompareRowsCache(S.cmpFilter,S.cmpSearch),key,el);
-  scheduleComparePrewarm(S.cmpFilter,S.cmpSearch);
+  const rec=getCompareRowsCache(S.cmpFilter,S.cmpSearch,S.cmpDiff,S.cmpSort);
+  $$('#panel-compare th.sortable').forEach(th=>{th.classList.remove('sort-asc','sort-desc');const s=S.cmpSort;if(s&&s.col===th.dataset.sort)th.classList.add(s.dir==='asc'?'sort-asc':'sort-desc');});
+  const cnt=$('#cmpCnt');if(cnt)cnt.textContent=`${rec.rows.length.toLocaleString()} shown`;
+  renderCompareRowsVirtual(rec,key,el);
+  scheduleComparePrewarm(S.cmpFilter,S.cmpSearch,S.cmpDiff,S.cmpSort);
 }
 function wireComparePanel(){
   $$('[data-cf]').forEach(b=>b.onclick=()=>{S.cmpFilter=b.dataset.cf;renderComparePanel();});
   const cq=$('#cq');if(cq){let d;cq.addEventListener('input',()=>{clearTimeout(d);d=setTimeout(()=>{S.cmpSearch=cq.value;renderComparePanel();},250);});}
   const cqx=$('#cqx');if(cqx)cqx.onclick=()=>{S.cmpSearch='';renderComparePanel();};
+  const diff=$('#cmpDiff');if(diff)diff.onchange=()=>{S.cmpDiff=diff.value;const card=$('#cmpCard');if(card)card.scrollTop=0;refreshCompare();};
+  $$('#panel-compare th.sortable').forEach(th=>th.onclick=()=>{
+    const col=th.dataset.sort,s=S.cmpSort;
+    S.cmpSort=(!s||s.col!==col)?{col,dir:'asc'}:(s.dir==='asc'?{col,dir:'desc'}:null);
+    const card=$('#cmpCard');if(card)card.scrollTop=0;refreshCompare();
+  });
 }
 function renderComparePanel(){
   const el=$('#panel-compare');if(!el)return;
   const key=comparePanelCacheKey();
-  if(isPanelCacheLive(el,key)){wireComparePanel();renderCompareRowsVirtual(getCompareRowsCache(S.cmpFilter,S.cmpSearch),key,el);scheduleComparePrewarm(S.cmpFilter,S.cmpSearch);return;}
-  if(restorePanelCache('compare',key,el,'#cmpCard')){wireComparePanel();renderCompareRowsVirtual(getCompareRowsCache(S.cmpFilter,S.cmpSearch),key,el);scheduleComparePrewarm(S.cmpFilter,S.cmpSearch);return;}
+  if(isPanelCacheLive(el,key)){wireComparePanel();renderCompareRowsVirtual(getCompareRowsCache(S.cmpFilter,S.cmpSearch,S.cmpDiff,S.cmpSort),key,el);scheduleComparePrewarm(S.cmpFilter,S.cmpSearch,S.cmpDiff,S.cmpSort);return;}
+  if(restorePanelCache('compare',key,el,'#cmpCard')){wireComparePanel();renderCompareRowsVirtual(getCompareRowsCache(S.cmpFilter,S.cmpSearch,S.cmpDiff,S.cmpSort),key,el);scheduleComparePrewarm(S.cmpFilter,S.cmpSearch,S.cmpDiff,S.cmpSort);return;}
   bumpRender();
   markPanelCachePending(el,key);
   if(!S.wcRows){
@@ -2237,6 +2270,8 @@ function renderComparePanel(){
   }
   const c=cmpCounts();
   const fchip=(k,label,n)=>`<button class="chip sm ${S.cmpFilter===k?'on':''}" data-cf="${k}">${esc(label)}${n!=null?` <span class="tabcount">${n}</span>`:''}</button>`;
+  const dopt=(value,label)=>`<option value="${value}" ${S.cmpDiff===value?'selected':''}>${label}</option>`;
+  const sc=col=>S.cmpSort&&S.cmpSort.col===col?(S.cmpSort.dir==='asc'?'sort-asc':'sort-desc'):'';
   el.innerHTML=`
     <div class="note info cmp-legend" style="margin-bottom:12px">${ic('git-branch')}<div>Comparing the <b>extracted</b> register against <b>${esc(S.workCopy?S.workCopy.name:'working copy')}</b>.
       <span class="lg"><span class="cbadge match">${ic('check-check')}Matching</span> parent &amp; dependency agree</span>
@@ -2244,10 +2279,12 @@ function renderComparePanel(){
       <span class="lg"><span class="cbadge nohit">${ic('minus')}No Comparison</span> present on only one side</span></div></div>
     <div class="toolbar">
       ${fchip('all','All',S.compare.length)}${fchip('off','Non-Matching',c.off)}${fchip('nohit','No Comparison',c.nohit)}${fchip('match','Matching',c.match)}
+      <label class="selectctl" title="Filter by changed field">${ic('filter')}<select id="cmpDiff" aria-label="Filter comparison differences">${dopt('all','All fields')}${dopt('parent','Parent differs')}${dopt('dep','Dependency differs')}${dopt('both','Both differ')}</select></label>
       <span class="stream-ind" id="cmpInd"></span>
+      <span class="hint" id="cmpCnt"></span>
       <div class="search" style="margin-left:auto">${ic('search')}<input id="cq" type="text" placeholder="Find equipment…" value="${esc(S.cmpSearch)}" autocomplete="off"><button class="qx ${S.cmpSearch?'show':''}" id="cqx">${ic('x')}</button></div>
     </div>
-    <div class="tablecard" id="cmpCard"><table class="dtable cmp"><thead><tr><th rowspan="2">Equipment ID</th><th rowspan="2">Status</th><th colspan="2">Closest Parent</th><th colspan="2">Dependency</th></tr><tr><th class="sub">Extracted</th><th class="sub">Working copy</th><th class="sub">Extracted</th><th class="sub">Working copy</th></tr></thead><tbody id="cmpBody"></tbody></table></div>`;
+    <div class="tablecard" id="cmpCard"><table class="dtable cmp"><thead><tr><th rowspan="2" class="sortable ${sc('equip')}" data-sort="equip">Equipment ID</th><th rowspan="2" class="sortable ${sc('status')}" data-sort="status">Status</th><th colspan="2">Closest Parent</th><th colspan="2">Dependency</th></tr><tr><th class="sortable sub ${sc('curParent')}" data-sort="curParent">Extracted</th><th class="sortable sub ${sc('wcParent')}" data-sort="wcParent">Working copy</th><th class="sortable sub ${sc('curDep')}" data-sort="curDep">Extracted</th><th class="sortable sub ${sc('wcDep')}" data-sort="wcDep">Working copy</th></tr></thead><tbody id="cmpBody"></tbody></table></div>`;
   wireComparePanel();
   refreshCompare();
 }
@@ -2263,9 +2300,8 @@ function lblHtml(name,hl){
   if(i<0)return esc(name);
   return esc(name.slice(0,i))+'<mark>'+esc(name.slice(i,i+hl.length))+'</mark>'+esc(name.slice(i+hl.length));
 }
-function rowInner(node,prefixArr,isLast,isRoot,hl,countLabel){
+function rowInner(node,prefixArr,isLast,isRoot,hl){
   const kids=kidsOf(node),hasKids=kids.length>0;
-  const countText=countLabel==null?kids.length:countLabel,countClass=countLabel==null?'':' filtered';
   const dep=nodeDep(node);
   const depBadge=dep?`<span class="dep ${node.isLoad?'dep-load':''}" title="${node.isLoad?'Dependency · equipment above':'Dependency · Panel (From)'}">${ic('spline')}${esc(dep)}</span>`:'';
   const pmdBadge=node.pmdPanel?`<span class="dep pmd-link" title="Matched PMD panel">${ic('database')}${esc(node.pmdPanel)}</span>`:'';
@@ -2277,14 +2313,14 @@ function rowInner(node,prefixArr,isLast,isRoot,hl,countLabel){
       ${hasKids?`<span class="twist">${ic('chevron-right')}</span>`:'<span class="twist"></span>'}
       <span class="badge-root">${ic('zap')}</span>
       <span class="lbl"${descTitle}>${lblHtml(node.name,hl)}</span>
-      ${depBadge}${pmdBadge}${hasKids?`<span class="cnt${countClass}">${esc(countText)}</span>`:''}${infoBtn}</div>`;
+      ${depBadge}${pmdBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${infoBtn}</div>`;
   }
   const marker=hasKids?'<span class="marker branch"></span>':(node.isInstrument?`<span class="marker instrument">${ic('database')}</span>`:node.isLoad?`<span class="marker load">${ic('corner-down-right')}</span>`:node.isId?`<span class="marker leaf">${ic('tag')}</span>`:'<span class="marker dot"></span>');
   return `<div class="row ${hasKids?'':'leafrow'} ${node.isLoad?'is-load':''} ${node.isInstrument?'is-instrument':''} ${node.isSpare?'is-spare':''} ${node.isSpace?'is-space':''}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
     <span class="gut">${gutterHtml(prefixArr,isLast)}</span>
     ${hasKids?`<span class="twist">${ic('chevron-right')}</span>`:'<span class="twist"></span>'}
     ${marker}<span class="lbl ${hasKids?'':'lbl-leaf'}"${descTitle}>${lblHtml(node.name,hl)}</span>
-    ${depBadge}${pmdBadge}${hasKids?`<span class="cnt${countClass}">${esc(countText)}</span>`:''}${infoBtn}</div>`;
+    ${depBadge}${pmdBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${infoBtn}</div>`;
 }
 function makeNode(node,prefixArr,isLast,isRoot){
   node._prefix=prefixArr;node._isLast=isLast;node._isRoot=isRoot;node._built=false;
@@ -2323,8 +2359,6 @@ function expandNode(row,node){
 function collapseNode(row){const kids=row.parentElement.querySelector(':scope > .kids');kids.hidden=true;row.classList.remove('open');row.setAttribute('aria-expanded','false');}
 function toggleNode(row,node){if(row.classList.contains('open'))collapseNode(row);else expandNode(row,node);}
 function onTreeClick(e){
-  const branch=e.target.closest('.branch-reveal');
-  if(branch){e.stopPropagation();toggleSearchBranch(branch.dataset.branch);return;}
   const info=e.target.closest('.rowinfo');
   if(info){e.stopPropagation();openDetail(info.dataset.detail);return;}
   const row=e.target.closest('.row');if(!row)return;
@@ -2381,7 +2415,7 @@ async function expandAll(){
 }
 function collapseAll(){
   cancelExpand();
-  S.search='';S.searchBranches.clear();const q=$('#q');if(q)q.value='';const qx=$('#qx');if(qx)qx.classList.remove('show');setQInfo('');
+  S.search='';const q=$('#q');if(q)q.value='';const qx=$('#qx');if(qx)qx.classList.remove('show');setQInfo('');
   renderTreeCollapsed();                               // bulk clear + rebuild roots (fast, no overlay)
 }
 
@@ -2397,41 +2431,29 @@ function countSelf(){let c=0;const w=n=>{if(n._self)c++;n.children.forEach(w);};
 function runSearch(){
   cancelExpand();
   const q=S.search.trim();
-  if(!q){S.searchBranches.clear();renderTreeCollapsed();setQInfo('');return;}
+  if(!q){renderTreeCollapsed();setQInfo('');return;}
   computeFilter(q,S.idOnly);
   const m=countSelf();
   renderFiltered(q);
   setQInfo(m?`<b>${m}</b> match${m!==1?'es':''}${S.idOnly?' in ID Names':''} for “${esc(q)}”`:`No matches for “${esc(q)}”${S.idOnly?' in ID Names':''}`);
 }
-function branchRevealHtml(node,hiddenCount,expanded){
-  const label=expanded?'Show matches only':`Show ${hiddenCount} non-matching item${hiddenCount===1?'':'s'}`;
-  return `<div class="branch-more"><span class="gut">${gutterHtml(childPrefix(node),true)}</span><span class="branch-node-space"></span><button class="branch-reveal" type="button" data-branch="${node.id}" aria-expanded="${expanded}">${ic('eye')}${label}</button></div>`;
-}
-function toggleSearchBranch(nodeId){
-  if(!S.search||!S.nodeById.has(nodeId))return;
-  if(S.searchBranches.has(nodeId))S.searchBranches.delete(nodeId);else S.searchBranches.add(nodeId);
-  const card=$('.treecard'),top=card?card.scrollTop:0,left=card?card.scrollLeft:0;
-  renderFiltered(S.search.trim());
-  requestAnimationFrame(()=>{const next=$('.treecard');if(next){next.scrollTop=top;next.scrollLeft=left;}});
-}
 function renderFiltered(hl){
   const tree=$('#tree');tree.innerHTML='';
   const build=(node,prefixArr,isLast,isRoot)=>{
     const fullKids=kidsOf(node),shown=fullKids.filter(c=>c._show&&!nodeHidden(c));
-    const partial=shown.length<fullKids.length,expanded=partial&&S.searchBranches.has(node.id);
-    const visible=expanded?fullKids:shown,countLabel=partial?`${shown.length} of ${fullKids.length}`:null;
+    const showContext=node._self||shown.some(c=>c._self);
+    const visible=showContext?fullKids:shown;
     node._prefix=prefixArr;node._isLast=isLast;node._isRoot=isRoot;node._built=true;
     const wrap=document.createElement('div');wrap.className='node';
-    wrap.innerHTML=rowInner(node,prefixArr,isLast,isRoot,node._self?hl:'',countLabel)+'<div class="kids"></div>';
+    wrap.innerHTML=rowInner(node,prefixArr,isLast,isRoot,node._self?hl:'')+'<div class="kids"></div>';
     const kids=wrap.querySelector('.kids');
     const cp=isRoot?[]:prefixArr.concat(!isLast);
     visible.forEach((c,i)=>{
-      const childLast=i===visible.length-1&&!partial;
+      const childLast=i===visible.length-1;
       if(c._show)kids.appendChild(build(c,cp,childLast,false));
       else{const extra=makeNode(c,cp,childLast,false);extra.classList.add('search-extra');kids.appendChild(extra);}
     });
-    if(partial)kids.insertAdjacentHTML('beforeend',branchRevealHtml(node,fullKids.length-shown.length,expanded));
-    if(visible.length||partial){const r=wrap.querySelector('.row');r.classList.add('open');r.setAttribute('aria-expanded','true');}
+    if(visible.length){const r=wrap.querySelector('.row');r.classList.add('open');r.setAttribute('aria-expanded','true');}
     return wrap;
   };
   const roots=S.roots.filter(r=>r._show&&!nodeHidden(r));
