@@ -152,13 +152,29 @@ test('imported strike formatting is shown only as Cable Schedule sidebar metadat
   assert.doesNotMatch(html, /function styleStrikeCell|function styleStrikeTags|struckClass|text-decoration:line-through/)
 })
 
-test('Load Description wins over duplicate hierarchy roles and no-ID loads use Final Source', () => {
+test('Load Description dependencies use ID Name before falling back to Final Source', () => {
   assert.match(html, /function collectLoadDescriptionTags\(keys,tick\)/)
   assert.match(html, /if\(!value\|\|\(loadTags&&loadTags\.has\(tagKey\(value\)\)\)\)return/)
   assert.match(html, /const finalSource=low\.findIndex/)
-  assert.match(html, /let \{segs,hasId,hasRawId,loadDesc,finalSource\}=rowToPath/)
-  assert.match(html, /const finalParent=!hasRawId&&finalSource\?finalSource:''/)
-  assert.match(html, /const meta=finalParent\?\{keepDuplicateDep:true\}:null/)
+  assert.match(html, /return \{segs,hasId,idName:id,loadDesc,finalSource\}/)
+  assert.match(html, /function loadSsmRelation\(idName,finalSource\)/)
+  assert.match(html, /return \{parent,dep:id\|\|final,keepDuplicateDep:!id&&!!final\}/)
+  assert.match(html, /function nodeDep\(n\)\{return n\.isLoad\?\(n\.loadDependency\|\|\(n\.parent\?n\.parent\.name:''\)\):depOf\(n\.name\);\}/)
+  assert.match(html, /function addLoadChild\(deepNode,loadName,dependency\)/)
+  assert.match(html, /loadDependency:m\.loadDependency\|\|''/)
+  assert.match(html, /let \{segs,hasId,idName,loadDesc,finalSource\}=rowToPath/)
+  assert.match(html, /const rel=loadSsmRelation\(idName,finalSource\),meta=rel\.keepDuplicateDep\?\{keepDuplicateDep:true\}:null/)
+  assert.match(html, /addLoadChild\(lcDeep,loadDesc,rel\.dep\);addLoadChild\(lsDeep,loadDesc,rel\.dep\)/)
+  const value = runInNewContext(`${customScript}
+    JSON.stringify([
+      loadSsmRelation('ID-100-S','FINAL-1'),
+      loadSsmRelation('','FINAL-2-P')
+    ]);
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), [
+    { parent: '', dep: 'ID-100', keepDuplicateDep: false },
+    { parent: 'FINAL-2', dep: 'FINAL-2', keepDuplicateDep: true },
+  ])
 })
 
 test('PMD workbooks auto-select INSTALL PMD and add instrument hierarchy metadata', () => {
