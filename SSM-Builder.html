@@ -231,6 +231,7 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .badge-root{width:24px;height:24px;flex:0 0 auto;border-radius:6px;display:grid;place-items:center;align-self:center;background:linear-gradient(150deg,var(--accent-500),var(--accent-700));color:#fff;margin-right:2px;box-shadow:0 2px 6px -2px rgba(234,88,12,.7)}
 .badge-root .ic{width:14px;height:14px}
 .lbl{align-self:center;padding:0 6px;white-space:nowrap;color:var(--ink)}
+.struck{text-decoration:line-through;text-decoration-thickness:1.5px}
 .row.root .lbl{font-weight:680;font-size:14px;letter-spacing:-.2px}
 .lbl-leaf{color:var(--ink-2)}
 .cnt{align-self:center;margin-left:4px;font-size:10.5px;color:var(--ink-3);background:var(--surface-3);border:1px solid var(--border);padding:1px 7px;border-radius:99px;font-weight:600}
@@ -608,18 +609,27 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const raf=()=>new Promise(r=>requestAnimationFrame(()=>r()));
 function idleFrame(){return new Promise(r=>{if(window.requestIdleCallback)window.requestIdleCallback(()=>r(),{timeout:90});else setTimeout(()=>r(),24);});}
 const clean=v=>String(v==null?'':v).trim();
-const cleanTag=v=>clean(v).replace(/-P$/i,'');
+const cleanTag=v=>clean(v).replace(/(?:-(?:P|S))+$/i,'');
 function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]||''}</svg>`;}
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.7';
+const APP_VERSION = '1.1.8';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.8',
+    date:'2026-07-20T15:30:00Z',
+    type:'feature',
+    stats:{features:1,improvements:2},
+    notes:`- Added support for preserving strikethrough tags from XLSX imports and SSM exports
+- Improved tag normalization by removing trailing -S suffixes and preferring Load Descriptions
+- Improved blank register values and no-ID Final Source relationships in comparisons and SSM exports`
+  },
   {
     version:'1.1.7',
     date:'2026-07-20T12:00:00Z',
@@ -1007,6 +1017,7 @@ function initUpdateCheck(){
 const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:new Set(),override:{},aoaCache:new Map(),
   roots:[],sheets:[],ssmCombined:[],nodeById:new Map(),stats:null,search:'',idOnly:false,
   showSpares:true,showSpaces:true,showDeps:true,showPmdMatches:true,deps:new Map(),depDetail:new Map(),hasCable:false,
+  struckTags:new Set(),
   pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdSuffixMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
   epDetail:new Map(),epNameSet:new Set(),review:[],workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
   cmpFilter:'all',cmpSearch:'',cmpDiff:'all',cmpSort:null,revSearch:'',revSort:null,revMinPct:null,showStats:true,
@@ -1014,6 +1025,9 @@ const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:n
   viewCache:{tree:null,review:new Map(),reviewRows:new Map(),compare:new Map(),compareRows:new Map()}};
 let _uid=0,_nid=0;
 const fileById=id=>S.files.find(f=>f.id===id);
+const tagKey=value=>cleanTag(value).toLowerCase();
+const isStruckTag=value=>S.struckTags.has(tagKey(value));
+const struckClass=value=>isStruckTag(value)?' struck':'';
 
 const RESULT_PANEL_CACHE_LIMIT=24;
 let _virtualTok=0,_cmpPrewarmTok=0;
@@ -1076,7 +1090,7 @@ const isSpaceName=n=>{const s=clean(n);return /^space(?:[\s\-_\d]|$)/i.test(s);}
 const isNote=v=>/^note\s*\d*$/i.test(clean(v));
 /* Load Description becomes the lowest leaf; disregard blanks, NOTEs, and values
    identical to the node it would nest under (its ID Name / Final Source). */
-function validLoad(loadDesc,deepest){const ld=clean(loadDesc);return !!ld&&!isNote(ld)&&ld!==clean(deepest);}
+function validLoad(loadDesc,deepest){const ld=cleanTag(loadDesc);return !!ld&&!isNote(ld)&&tagKey(ld)!==tagKey(deepest);}
 /* separator-aware fuzzy matching: "ABC-1" vs "ABC_1" reads as 100% */
 const normSep=s=>clean(s).toLowerCase().replace(/[\s\-_\/.]+/g,'');
 function levDist(a,b){const m=a.length,n=b.length;if(!m)return n;if(!n)return m;let prev=[...Array(n+1).keys()],cur=new Array(n+1);for(let i=1;i<=m;i++){cur[0]=i;for(let j=1;j<=n;j++){const c=a[i-1]===b[j-1]?0:1;cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+c);}[prev,cur]=[cur,prev];}return prev[n];}
@@ -1196,9 +1210,10 @@ function autoDetect(headers){
   const ds=[];low.forEach((h,i)=>{const m=h.match(/down\s*stream\s*0*(\d+)/)||h.match(/^ds\s*0*(\d+)$/);if(m)ds.push({i,n:+m[1]});});
   ds.sort((a,b)=>a.n-b.n);
   const loadDesc=low.findIndex(h=>/load\s*desc/.test(h));
+  const finalSource=low.findIndex(h=>/^final[\s_]*source$/.test(h)||/final.*source/.test(h));
   let circuit=low.findIndex(h=>/^circuit\s*#$/.test(h)||/circuit\s*#/.test(h));
   if(circuit<0)circuit=low.findIndex(h=>normH(h)==='circuit');
-  return {sourceAuto:source,idAuto:idName,dsPattern:ds.map(d=>d.i),loadDescAuto:loadDesc,circuitAuto:circuit,headers:H};
+  return {sourceAuto:source,idAuto:idName,dsPattern:ds.map(d=>d.i),loadDescAuto:loadDesc,finalSourceAuto:finalSource,circuitAuto:circuit,headers:H};
 }
 function resolveCols(key){
   const {headers}=getAoa(key);
@@ -1212,7 +1227,7 @@ function resolveCols(key){
     const lo=Math.min(source,idName),hi=Math.max(source,idName);downstream=[];
     for(let i=lo+1;i<hi;i++)downstream.push(i);
   }
-  return {source,idName,downstream,loadDesc:a.loadDescAuto,circuit:a.circuitAuto,headers,ok:(a.sourceAuto>=0&&a.idAuto>=0)};
+  return {source,idName,downstream,loadDesc:a.loadDescAuto,finalSource:a.finalSourceAuto,circuit:a.circuitAuto,headers,ok:(a.sourceAuto>=0&&a.idAuto>=0)};
 }
 /* ---- cable schedule detection (Load Name (To) -> Panel (From)) + detail columns ---- */
 const normH=s=>clean(s).toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -1320,25 +1335,99 @@ function parseWorkCopy(){
 
 /* ---- parsing ---- */
 function readArrayBuffer(file){return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=()=>rej(fr.error||new Error('read error'));fr.readAsArrayBuffer(file);});}
-function sheetAoa(ws){return XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:'',blankrows:false});}
+/* xlsx-js-style writes cell styles but does not expose imported font details.
+   Read the XLSX archive metadata directly so strike formatting stays offline. */
+function extractStrikeCells(bytes){
+  const out=new Map();
+  if(typeof fflate==='undefined'||bytes[0]!==0x50||bytes[1]!==0x4b)return out;
+  try{
+    const files=fflate.unzipSync(bytes),dec=new TextDecoder(),parser=new DOMParser();
+    const doc=path=>files[path]?parser.parseFromString(dec.decode(files[path]),'application/xml'):null;
+    const styles=doc('xl/styles.xml');if(!styles)return out;
+    const strikeFonts=new Set();
+    [...styles.querySelectorAll('fonts > font')].forEach((font,i)=>{
+      const strike=[...font.children].find(el=>el.localName==='strike');
+      const val=strike?clean(strike.getAttribute('val')).toLowerCase():'';
+      if(strike&&val!=='0'&&val!=='false')strikeFonts.add(i);
+    });
+    const strikeStyles=new Set();
+    [...styles.querySelectorAll('cellXfs > xf')].forEach((xf,i)=>{if(strikeFonts.has(Number(xf.getAttribute('fontId')||0)))strikeStyles.add(i);});
+    if(!strikeStyles.size)return out;
+    const relDoc=doc('xl/_rels/workbook.xml.rels'),wbDoc=doc('xl/workbook.xml');if(!relDoc||!wbDoc)return out;
+    const rels=new Map([...relDoc.querySelectorAll('Relationship')].map(rel=>[rel.getAttribute('Id'),rel.getAttribute('Target')]));
+    const localAttr=(el,name)=>[...el.attributes].find(a=>a.localName===name)?.value||'';
+    const pathFor=target=>{
+      let path=clean(target).replace(/\\/g,'/').replace(/^\//,'');if(!path.startsWith('xl/'))path='xl/'+path;
+      const parts=[];for(const part of path.split('/')){if(part==='..')parts.pop();else if(part&&part!=='.')parts.push(part);}return parts.join('/');
+    };
+    for(const sheet of wbDoc.querySelectorAll('sheets > sheet')){
+      const name=sheet.getAttribute('name'),rid=sheet.getAttribute('r:id')||localAttr(sheet,'id'),sheetDoc=doc(pathFor(rels.get(rid)));
+      if(!name||!sheetDoc)continue;
+      const cells=new Set();
+      for(const cell of sheetDoc.querySelectorAll('c')){
+        const own=cell.hasAttribute('s'),style=Number(own?cell.getAttribute('s'):cell.parentElement?.getAttribute('s')||0);
+        if(strikeStyles.has(style))cells.add(cell.getAttribute('r'));
+      }
+      if(cells.size)out.set(name,cells);
+    }
+  }catch(e){console.warn('Could not read imported strike formatting',e);}
+  return out;
+}
+function sheetAoa(ws){
+  if(!ws||!ws['!ref'])return {aoa:[],rowNums:[]};
+  const rows=new Map();let maxCol=0;
+  for(const address of Object.keys(ws)){
+    if(address[0]==='!'||!/^[A-Z]{1,3}\d+$/.test(address))continue;
+    const cell=ws[address];if(!cell||(cell.v==null&&cell.f==null&&cell.w==null))continue;
+    const pos=XLSX.utils.decode_cell(address),value=cell.w!=null?cell.w:XLSX.utils.format_cell(cell);
+    let row=rows.get(pos.r);if(!row){row=new Map();rows.set(pos.r,row);}row.set(pos.c,value);if(pos.c>maxCol)maxCol=pos.c;
+  }
+  const rowNums=[...rows.keys()].sort((a,b)=>a-b);
+  const aoa=rowNums.map(r=>Array.from({length:maxCol+1},(_,c)=>rows.get(r).get(c)??''));
+  return {aoa,rowNums};
+}
 function getAoa(key){
   if(S.aoaCache.has(key))return S.aoaCache.get(key);
   const [fid,sheet]=key.split(KEYSEP);const f=fileById(fid);const ws=f.wb.Sheets[sheet];
-  const aoa=sheetAoa(ws);const headerRow=findHeaderRow(aoa);
-  const rec={aoa,headerRow,headers:aoa[headerRow]||[]};S.aoaCache.set(key,rec);return rec;
+  const {aoa,rowNums}=sheetAoa(ws),headerRow=findHeaderRow(aoa);
+  const rec={aoa,rowNums,headerRow,headers:aoa[headerRow]||[],ws,strikes:(f.strikes&&f.strikes.get(sheet))||new Set()};S.aoaCache.set(key,rec);return rec;
 }
 function sheetRowCount(key){const {aoa,headerRow}=getAoa(key);return Math.max(0,aoa.length-headerRow-1);}
+function cellIsStruck(rec,row,col){const sourceRow=rec&&rec.rowNums?rec.rowNums[row]:row;return !!(rec&&sourceRow!=null&&col>=0&&rec.strikes&&rec.strikes.has(XLSX.utils.encode_cell({r:sourceRow,c:col})));}
+function rowTag(row,col,rec,rowIndex){
+  const tag=col>=0?cleanTag(row[col]):'';
+  if(tag&&cellIsStruck(rec,rowIndex,col))S.struckTags.add(tagKey(tag));
+  return tag;
+}
+async function collectLoadDescriptionTags(keys,tick){
+  const tags=new Set();
+  for(const key of keys){
+    const rec=getAoa(key),cols=resolveCols(key);
+    for(let i=rec.headerRow+1;i<rec.aoa.length;i++){
+      if(tick)await tick('Indexing Load Descriptions');
+      if(cols.loadDesc<0)continue;
+      const load=rowTag(rec.aoa[i],cols.loadDesc,rec,i);if(load&&!isNote(load))tags.add(tagKey(load));
+    }
+  }
+  return tags;
+}
 
 /* ---- hierarchy build (no collapse, except: an ID Name equal to the farthest
    downstream tag is dropped so the branch stops at that downstream tag) ---- */
-function rowToPath(row,cols){
+function rowToPath(row,cols,rec,rowIndex,loadTags){
   const segs=[];let hasId=false;
-  const s=cleanTag(row[cols.source]);if(s)segs.push(s);
-  for(const di of cols.downstream){const v=cleanTag(row[di]);if(v)segs.push(v);}
-  const id=cleanTag(row[cols.idName]);
-  if(id&&!(segs.length&&id===segs[segs.length-1])){segs.push(id);hasId=true;}
-  const loadDesc=cols.loadDesc>=0?cleanTag(row[cols.loadDesc]):'';
-  return {segs,hasId,loadDesc};
+  const source=rowTag(row,cols.source,rec,rowIndex);
+  const downstream=cols.downstream.map(col=>rowTag(row,col,rec,rowIndex));
+  const finalSource=rowTag(row,cols.finalSource,rec,rowIndex);
+  const id=rowTag(row,cols.idName,rec,rowIndex),hasRawId=!!id;
+  const loadDesc=rowTag(row,cols.loadDesc,rec,rowIndex);
+  const push=value=>{
+    if(!value||(loadTags&&loadTags.has(tagKey(value))))return;
+    if(!segs.length||tagKey(segs[segs.length-1])!==tagKey(value))segs.push(value);
+  };
+  push(source);downstream.forEach(push);push(finalSource);
+  if(id&&(!segs.length||tagKey(id)!==tagKey(segs[segs.length-1]))&&!(loadTags&&loadTags.has(tagKey(id)))){segs.push(id);hasId=true;}
+  return {segs,hasId,hasRawId,loadDesc,finalSource};
 }
 function insertPath(root,p,hasId){
   let n=root;
@@ -1445,7 +1534,7 @@ async function addWorkCopy(file){
   await raf();
   try{
     const buf=await readArrayBuffer(file);await raf();
-    const wb=XLSX.read(new Uint8Array(buf),{type:'array'});S.workCopy={name:file.name,wb};
+    const bytes=new Uint8Array(buf),wb=XLSX.read(bytes,{type:'array'});S.workCopy={name:file.name,wb};
     await raf();parseWorkCopy();
   }catch(e){S.workCopy=null;S.wcRows=null;toast('Could not read working copy');}
   renderWorkCopy();
@@ -1486,9 +1575,9 @@ async function addFiles(fileObjs){
       const file=accepted[i];
       report(i/accepted.length,`File ${i+1} of ${accepted.length}`);await raf();
       const ext=(file.name.split('.').pop()||'').toLowerCase();
-      const rec={id:'f'+(_uid++),name:file.name,ext,size:file.size,wb:null,sheets:[],error:null};
-      try{const buf=await readArrayBuffer(file);const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
-        rec.wb=wb;rec.sheets=wb.SheetNames.slice();if(!rec.sheets.length)rec.error='No readable tabs found';
+      const rec={id:'f'+(_uid++),name:file.name,ext,size:file.size,wb:null,sheets:[],strikes:new Map(),error:null};
+      try{const buf=await readArrayBuffer(file),bytes=new Uint8Array(buf),wb=XLSX.read(bytes,{type:'array'});
+        rec.wb=wb;rec.strikes=extractStrikeCells(bytes);rec.sheets=wb.SheetNames.slice();if(!rec.sheets.length)rec.error='No readable tabs found';
       }catch(err){rec.error='Could not read this file';}
       S.files.push(rec);
     }
@@ -1634,12 +1723,12 @@ async function buildDeps(tick){
     const ci=cableInfo(key);if(!ci)continue; // named "Cable Schedule" but no Load/Panel columns -> nothing to attach
     const {map,headerRow}=ci;
     S.hasCable=true;
-    const {aoa}=getAoa(key);
+    const rec=getAoa(key),{aoa}=rec;
     const loadC=map['Load Name (To)'],panelC=map['Panel (From)'],ents=Object.entries(map);
     for(let i=headerRow+1;i<aoa.length;i++){
       if(tick)await tick('Reading cable schedule');
-      const row=aoa[i],load=cleanTag(row[loadC]);if(!load)continue;
-      const lk=load.toLowerCase(),panel=cleanTag(row[panelC]);
+      const row=aoa[i],load=rowTag(row,loadC,rec,i);if(!load)continue;
+      const lk=load.toLowerCase(),panel=rowTag(row,panelC,rec,i);
       if(!S.deps.has(lk)&&panel)S.deps.set(lk,panel);
       if(!S.depDetail.has(lk)){
         const fields={};for(const [label,idx] of ents)fields[label]=(label==='Load Name (To)'||label==='Panel (From)')?cleanTag(row[idx]):clean(row[idx]);
@@ -1744,11 +1833,13 @@ async function buildHierarchy(){
     let cableRows=0;for(const k of S.cableSel)if(cableInfo(k)){cableRows+=Math.max(0,(getAoa(k).aoa.length)-(cableInfo(k).headerRow)-1);}
     let pmdRows=0;for(const k of S.pmdSel)if(pmdInfo(k)){pmdRows+=Math.max(0,getAoa(k).aoa.length-pmdInfo(k).headerRow-1);}
     let hierRows=0;for(const k of keys)hierRows+=rowsIn(k);
-    const total=Math.max(1,cableRows+pmdRows+hierRows);let done=0;
+    const total=Math.max(1,cableRows+pmdRows+hierRows*2);let done=0;
     const READ_LO=.03,READ_HI=.78;
     const tick=async(label)=>{done++;await maybeYield(report,READ_LO+(READ_HI-READ_LO)*(done/total),label);};
 
     report(.02,'Reading source data');await raf();
+    S.struckTags=new Set();
+    const loadTags=await collectLoadDescriptionTags(keys,tick);
     await buildDeps(tick);
     await buildPmd(tick);
     S.epDetail=new Map();
@@ -1758,13 +1849,13 @@ async function buildHierarchy(){
     for(let t=0;t<keys.length;t++){
       const key=keys[t];
       const [fid,sheetName]=key.split(KEYSEP);
-      const {aoa,headerRow}=getAoa(key),cols=resolveCols(key);
+      const rec=getAoa(key),{aoa,headerRow}=rec,cols=resolveCols(key);
       const label=`Tab ${t+1} of ${keys.length}`;
       const sMap={name:'__root__',kids:new Map()};
       const seenS=new Set(),ssmRows=[];
       for(let i=headerRow+1;i<aoa.length;i++){
         await tick(label);
-        let {segs,hasId,loadDesc}=rowToPath(aoa[i],cols);
+        let {segs,hasId,hasRawId,loadDesc,finalSource}=rowToPath(aoa[i],cols,rec,i,loadTags);
         segs=gisBusCut(segs);              // disregard BUS + everything above a GIS→BUS→GIS
         if(!segs.length)continue;
         rowsRead++;
@@ -1784,9 +1875,11 @@ async function buildHierarchy(){
         if(validLoad(loadDesc,deepest)){
           addLoadChild(lcDeep,loadDesc);addLoadChild(lsDeep,loadDesc);
           if(circuit)noteEP(loadDesc,circuit);
-          const lkey=acc+KEYSEP+'\u0006'+loadDesc;
-          if(!seenC.has(lkey)){seenC.add(lkey);ssmCombined.push([loadDesc,'',deepest]);loadCount++;}
-          if(!seenS.has(lkey)){seenS.add(lkey);ssmRows.push([loadDesc,'',deepest]);}
+          const finalParent=!hasRawId&&finalSource?finalSource:'',loadDep=finalParent||deepest;
+          const meta=finalParent?{keepDuplicateDep:true}:null,lkey=acc+KEYSEP+'\u0006'+loadDesc;
+          const loadRow=meta?[loadDesc,finalParent,loadDep,meta]:[loadDesc,finalParent,loadDep];
+          if(!seenC.has(lkey)){seenC.add(lkey);ssmCombined.push(loadRow);loadCount++;}
+          if(!seenS.has(lkey)){seenS.add(lkey);ssmRows.push(meta?[...loadRow.slice(0,3),{...meta}]:[...loadRow]);}
         }
       }
       sheets.push({key,sheetName,fileName:fileById(fid).name,_sMap:sMap,ssmRows}); // tree built lazily on export
@@ -1842,14 +1935,19 @@ async function buildReview(report){
     }
   }
 }
-/* Resolve a stored SSM row [equip, parent, depOverride] to display values. */
-function ssmResolve(r){const e=cleanTag(r[0]),par=cleanTag(r[1]||''),dep=r[2]!=null?cleanTag(r[2]):(depOf(e)||'');return {equip:e,parent:par,dep};}
-function sameRegisterValue(a,b){return clean(a).toLowerCase()===clean(b).toLowerCase();}
-function registerDepValue(parent,dep){
-  const d=clean(dep);
-  return d&&sameRegisterValue(parent,d)?'N/A':d;
+/* Resolve a stored SSM row [equip, parent, depOverride, metadata] to display values. */
+function ssmResolve(r){
+  const e=cleanTag(r[0]),par=cleanTag(r[1]||''),dep=r[2]!=null?cleanTag(r[2]):(depOf(e)||''),meta=r[3]||{};
+  return {equip:e,parent:par,dep,keepDuplicateDep:!!meta.keepDuplicateDep};
 }
-function ssmRegisterResolve(r){const o=ssmResolve(r);return {...o,dep:registerDepValue(o.parent,o.dep)};}
+function registerCompareKey(value){const v=clean(value).toLowerCase();return (!v||v==='n/a'||v==='-'||v==='—')?'':v;}
+function registerDisplayValue(value){return registerCompareKey(value)===''?'N/A':clean(value);}
+function sameRegisterValue(a,b){return registerCompareKey(a)===registerCompareKey(b);}
+function registerDepValue(parent,dep,keepDuplicate){
+  const d=clean(dep);
+  return d&&!keepDuplicate&&sameRegisterValue(parent,d)?'N/A':d;
+}
+function ssmRegisterResolve(r){const o=ssmResolve(r);return {...o,dep:registerDepValue(o.parent,o.dep,o.keepDuplicateDep)};}
 /* Compare the current SSM register against an imported "Current Working Copy". */
 async function buildComparison(report){
   S.compare=[];S.compareBuckets={all:[],off:[],nohit:[],match:[]};if(!S.wcRows)return;
@@ -1863,9 +1961,9 @@ async function buildComparison(report){
     cdone++;if(report)await maybeYield(report,.96+.03*(cdone/total),'Comparing working copy');
     const a=cur.get(k),b=wc.get(k);let status;
     const curParent=a?a.parent:'';
-    const curDep=a?registerDepValue(a.parent,a.dep):'';
+    const curDep=a?registerDepValue(a.parent,a.dep,a.keepDuplicateDep):'';
     const wcParent=b?b.parent:'';
-    const wcDep=b?registerDepValue(b.parent,b.dep):'';
+    const wcDep=b?registerDepValue(b.parent,b.dep,!!(a&&a.keepDuplicateDep)):'';
     if(a&&b)status=(eq(curParent,wcParent)&&eq(curDep,wcDep))?'match':'off';
     else status='nohit';
     const rec={equip:a?a.equip:b.equip,
@@ -2066,11 +2164,11 @@ function mountVirtualRows(tbodySel,rows,makeRow,emptyHtml,opts){
 /* ---- Review panel (cable not in Easy Power) ---- */
 function reviewMakeRow(r){
   const pm=r.matches.length
-    ? `<div class="pmcell">${r.matches.map((m,i)=>`<span class="pm ${i===0?'best':''}">${esc(m.match)}<span class="pmpct">${m.pct}%</span></span>`).join('')}</div>`
+    ? `<div class="pmcell">${r.matches.map((m,i)=>`<span class="pm ${i===0?'best':''}${struckClass(m.match)}">${esc(m.match)}<span class="pmpct">${m.pct}%</span></span>`).join('')}</div>`
     : '<span class="muted">—</span>';
   const best=r.matches[0];
   const pct=best?`<span class="pct ${best.pct>=95?'hi':''}">${best.pct}%</span>`:'';
-  return `<tr><td class="mono">${esc(r.load)}</td><td class="mono">${esc(r.panel||'—')}</td><td class="mono">${esc(r.circuit||'—')}</td><td>${pm}</td><td>${pct}</td></tr>`;
+  return `<tr><td class="mono${struckClass(r.load)}">${esc(r.load)}</td><td class="mono${struckClass(r.panel)}">${esc(r.panel||'—')}</td><td class="mono">${esc(r.circuit||'—')}</td><td>${pm}</td><td>${pct}</td></tr>`;
 }
 function sortReviewList(rows){
   const s=S.revSort;if(!s)return rows;
@@ -2163,7 +2261,7 @@ const CMP_FILTERS=['all','off','nohit','match'];
 const CMP_LABEL={match:'Matching',off:'Non-Matching',nohit:'No Comparison'};
 const CMP_ICON={match:'check-check',off:'triangle-alert',nohit:'minus'};
 function cmpCounts(){const b=S.compareBuckets||{};return {off:(b.off||[]).length,nohit:(b.nohit||[]).length,match:(b.match||[]).length};}
-function compareSearchKey(r){return [r.equip,r.curParent,r.wcParent,r.curDep,r.wcDep].map(clean).join(' ').toLowerCase();}
+function compareSearchKey(r){return [r.equip,r.curParent,r.wcParent,r.curDep,r.wcDep].map(registerDisplayValue).join(' ').toLowerCase();}
 function compareSortKey(sort){return sort?sort.col+':'+sort.dir:'';}
 function comparePanelCacheKeyFor(filter,search,diff,sort){return ['compare',S.compare.length,filter,search,diff,compareSortKey(sort)].join(KEYSEP);}
 function comparePanelCacheKey(){return comparePanelCacheKeyFor(S.cmpFilter,S.cmpSearch,S.cmpDiff,S.cmpSort);}
@@ -2193,10 +2291,10 @@ function compareRowsFor(filter,search,diff,sort){
   return sortCompareList(rows,sort);
 }
 function compareRows(){return compareRowsFor(S.cmpFilter,S.cmpSearch,S.cmpDiff,S.cmpSort);}
-function compareMakeCell(a,b){const diff=clean(a).toLowerCase()!==clean(b).toLowerCase();return `<td class="mono ${diff?'diff':''}">${esc(a)||'—'}</td><td class="mono ${diff?'diff':''}">${esc(b)||'—'}</td>`;}
+function compareMakeCell(a,b){const diff=!sameRegisterValue(a,b);return `<td class="mono ${diff?'diff':''}${struckClass(a)}">${esc(registerDisplayValue(a))}</td><td class="mono ${diff?'diff':''}${struckClass(b)}">${esc(registerDisplayValue(b))}</td>`;}
 function compareMakeRow(r){
   const sub=r.status==='nohit'?`<span class="subtle">${r.inCur?'only in extracted':'only in working copy'}</span>`:'';
-  return `<tr class="r-${r.status}"><td class="mono">${esc(r.equip)}</td><td><span class="cbadge ${r.status}">${ic(CMP_ICON[r.status])}${CMP_LABEL[r.status]}</span>${sub}</td>${compareMakeCell(r.curParent,r.wcParent)}${compareMakeCell(r.curDep,r.wcDep)}</tr>`;
+  return `<tr class="r-${r.status}"><td class="mono${struckClass(r.equip)}">${esc(r.equip)}</td><td><span class="cbadge ${r.status}">${ic(CMP_ICON[r.status])}${CMP_LABEL[r.status]}</span>${sub}</td>${compareMakeCell(r.curParent,r.wcParent)}${compareMakeCell(r.curDep,r.wcDep)}</tr>`;
 }
 function getCompareRowsCache(filter,search,diff,sort){
   const key=compareRowsCacheKey(filter,search,diff,sort),hit=cacheGet(S.viewCache.compareRows,key);
@@ -2303,7 +2401,7 @@ function lblHtml(name,hl){
 function rowInner(node,prefixArr,isLast,isRoot,hl){
   const kids=kidsOf(node),hasKids=kids.length>0;
   const dep=nodeDep(node);
-  const depBadge=dep?`<span class="dep ${node.isLoad?'dep-load':''}" title="${node.isLoad?'Dependency · equipment above':'Dependency · Panel (From)'}">${ic('spline')}${esc(dep)}</span>`:'';
+  const depBadge=dep?`<span class="dep ${node.isLoad?'dep-load':''}${struckClass(dep)}" title="${node.isLoad?'Dependency · equipment above':'Dependency · Panel (From)'}">${ic('spline')}${esc(dep)}</span>`:'';
   const pmdBadge=node.pmdPanel?`<span class="dep pmd-link" title="Matched PMD panel">${ic('database')}${esc(node.pmdPanel)}</span>`:'';
   const descTitle=node.isInstrument&&node.description?` title="${esc(node.description)}"`:'';
   const nk=clean(node.name).toLowerCase();
@@ -2312,14 +2410,14 @@ function rowInner(node,prefixArr,isLast,isRoot,hl){
     return `<div class="row root ${hasKids?'':'leafrow'}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
       ${hasKids?`<span class="twist">${ic('chevron-right')}</span>`:'<span class="twist"></span>'}
       <span class="badge-root">${ic('zap')}</span>
-      <span class="lbl"${descTitle}>${lblHtml(node.name,hl)}</span>
+      <span class="lbl${struckClass(node.name)}"${descTitle}>${lblHtml(node.name,hl)}</span>
       ${depBadge}${pmdBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${infoBtn}</div>`;
   }
   const marker=hasKids?'<span class="marker branch"></span>':(node.isInstrument?`<span class="marker instrument">${ic('database')}</span>`:node.isLoad?`<span class="marker load">${ic('corner-down-right')}</span>`:node.isId?`<span class="marker leaf">${ic('tag')}</span>`:'<span class="marker dot"></span>');
   return `<div class="row ${hasKids?'':'leafrow'} ${node.isLoad?'is-load':''} ${node.isInstrument?'is-instrument':''} ${node.isSpare?'is-spare':''} ${node.isSpace?'is-space':''}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
     <span class="gut">${gutterHtml(prefixArr,isLast)}</span>
     ${hasKids?`<span class="twist">${ic('chevron-right')}</span>`:'<span class="twist"></span>'}
-    ${marker}<span class="lbl ${hasKids?'':'lbl-leaf'}"${descTitle}>${lblHtml(node.name,hl)}</span>
+    ${marker}<span class="lbl ${hasKids?'':'lbl-leaf'}${struckClass(node.name)}"${descTitle}>${lblHtml(node.name,hl)}</span>
     ${depBadge}${pmdBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${infoBtn}</div>`;
 }
 function makeNode(node,prefixArr,isLast,isRoot){
@@ -2549,6 +2647,12 @@ function setFilter(ws,headerRow){
   const rng=XLSX.utils.decode_range(ws['!ref']);
   ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:headerRow,c:rng.s.c},e:{r:rng.e.r,c:rng.e.c}})};
 }
+function styleStrikeCell(cell){if(cell)cell.s={...(cell.s||{}),font:{...((cell.s&&cell.s.font)||{}),strike:true}};}
+function styleStrikeTags(ws,rowStart,columns){
+  if(!ws['!ref'])return;
+  const end=XLSX.utils.decode_range(ws['!ref']).e.r;
+  for(let r=rowStart;r<=end;r++)for(const c of columns){const cell=ws[XLSX.utils.encode_cell({r,c})];if(cell&&isStruckTag(cell.v))styleStrikeCell(cell);}
+}
 /* Indented hierarchy; depth -> column. Dependency sits in the cell right after the
    node's name (one column over), per request. Spares/Spaces honor the view toggles. */
 function addHierSheet(wb,name,roots,used){
@@ -2561,6 +2665,7 @@ function addHierSheet(wb,name,roots,used){
   ws['!cols']=Array.from({length:width},()=>({wch:22}));
   const rng=XLSX.utils.decode_range(ws['!ref']);            // bold the top-level (root) rows
   for(let R=0;R<=rng.e.r;R++){const ad=XLSX.utils.encode_cell({r:R,c:0});const cell=ws[ad];if(cell&&clean(cell.v)!=='')cell.s=XL_ROOT;}
+  styleStrikeTags(ws,0,[...Array(width).keys()]);
   addSheet(wb,ws,name,used,0);
 }
 /* Exto SSM: Equipment ID -> K, Closest Parent -> P, Dependencies -> AM (header row 2, data row 3).
@@ -2569,18 +2674,20 @@ function addExtoSheet(wb,name,rows,used){
   const K=10,P=15,AM=38,W=39,aoa=[];
   aoa.push(new Array(W).fill(''));
   const head=new Array(W).fill('');head[K]='Equipment ID';head[P]='Closest Parent';head[AM]='Dependencies';aoa.push(head);
-  for(const r of filterSsm(rows)){const {equip,parent,dep}=ssmRegisterResolve(r);const row=new Array(W).fill('');row[K]=equip;row[P]=parent;row[AM]=dep||'N/A';aoa.push(row);}
+  for(const r of filterSsm(rows)){const {equip,parent,dep}=ssmRegisterResolve(r);const row=new Array(W).fill('');row[K]=equip;row[P]=registerDisplayValue(parent);row[AM]=registerDisplayValue(dep);aoa.push(row);}
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   const cols=new Array(W).fill(0).map(()=>({wch:9}));cols[K]={wch:26};cols[P]={wch:26};cols[AM]={wch:24};ws['!cols']=cols;
+  styleStrikeTags(ws,2,[K,P,AM]);
   styleHeaderRow(ws,1);                                     // only the K/P/AM header cells are non-empty
   addSheet(wb,ws,name,used,2);
 }
 /* Plain SSM: Equipment ID, Closest Parent, Dependencies side by side (A/B/C). */
 function addSsm3Sheet(wb,name,rows,used){
   const aoa=[['Equipment ID','Closest Parent','Dependencies']];
-  for(const r of filterSsm(rows)){const {equip,parent,dep}=ssmRegisterResolve(r);aoa.push([equip,parent,dep||'N/A']);}
+  for(const r of filterSsm(rows)){const {equip,parent,dep}=ssmRegisterResolve(r);aoa.push([equip,registerDisplayValue(parent),registerDisplayValue(dep)]);}
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=[{wch:28},{wch:28},{wch:24}];
+  styleStrikeTags(ws,1,[0,1,2]);
   styleHeaderRow(ws,0);setFilter(ws,0);
   addSheet(wb,ws,name,used,1);
 }
@@ -2600,6 +2707,7 @@ function addReviewSheet(wb,used){
   ws['!cols']=[{wch:28},{wch:20},{wch:16},{wch:26},{wch:7},{wch:26},{wch:7},{wch:26},{wch:7}];
   const rng=XLSX.utils.decode_range(ws['!ref']);            // show % as "86%", centered, numeric-sortable
   for(let R=1;R<=rng.e.r;R++)for(const C of [4,6,8]){const cell=ws[XLSX.utils.encode_cell({r:R,c:C})];if(cell&&typeof cell.v==='number'){cell.z='0"%"';cell.s=XL_PCT;}}
+  styleStrikeTags(ws,1,[0,1,3,5,7]);
   styleHeaderRow(ws,0);setFilter(ws,0);
   addSheet(wb,ws,'Review - Cable not in EP',used,1);
 }
@@ -2611,17 +2719,17 @@ function addCompareSheet(wb,used){
   if(!rows.length)return;
   const label={off:'Non-Matching',nohit:'No Comparison',match:'Matching'};
   const aoa=[['Equipment ID','Status','Extracted Parent','Working Copy Parent','Extracted Dependency','Working Copy Dependency']];
-  for(const r of rows)aoa.push([r.equip,label[r.status],r.curParent,r.wcParent,r.curDep,r.wcDep]);
+  for(const r of rows)aoa.push([r.equip,label[r.status],registerDisplayValue(r.curParent),registerDisplayValue(r.wcParent),registerDisplayValue(r.curDep),registerDisplayValue(r.wcDep)]);
   const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:26},{wch:15},{wch:22},{wch:22},{wch:22},{wch:22}];
-  const eqv=(a,b)=>clean(a).toLowerCase()===clean(b).toLowerCase();
   rows.forEach((r,i)=>{
     const R=i+1;
     const st=ws[XLSX.utils.encode_cell({r:R,c:1})];if(st&&CMP_STYLE[st.v])st.s=CMP_STYLE[st.v];
     if(r.status==='off'){                                    // highlight the values that differ
-      if(!eqv(r.curParent,r.wcParent)){for(const C of[2,3]){const c=ws[XLSX.utils.encode_cell({r:R,c:C})];if(c)c.s=XL_DIFF;}}
-      if(!eqv(r.curDep,r.wcDep)){for(const C of[4,5]){const c=ws[XLSX.utils.encode_cell({r:R,c:C})];if(c)c.s=XL_DIFF;}}
+      if(!sameRegisterValue(r.curParent,r.wcParent)){for(const C of[2,3]){const c=ws[XLSX.utils.encode_cell({r:R,c:C})];if(c)c.s=XL_DIFF;}}
+      if(!sameRegisterValue(r.curDep,r.wcDep)){for(const C of[4,5]){const c=ws[XLSX.utils.encode_cell({r:R,c:C})];if(c)c.s=XL_DIFF;}}
     }
   });
+  styleStrikeTags(ws,1,[0,2,3,4,5]);
   styleHeaderRow(ws,0);setFilter(ws,0);
   addSheet(wb,ws,'Comparison',used,1);
 }
@@ -2693,7 +2801,7 @@ function openDetail(nodeId){
   const nk=clean(node.name).toLowerCase();
   const d=S.depDetail.get(nk),ep=S.epDetail.get(nk);
   const pmd=node.pmdKey?S.pmdDetail.get(node.pmdKey):null;
-  $('#drawerTitle').innerHTML=`${ic(node.isInstrument?'database':node.isLoad?'corner-down-right':'spline')}<span>${esc(node.name)}</span>`;
+  $('#drawerTitle').innerHTML=`${ic(node.isInstrument?'database':node.isLoad?'corner-down-right':'spline')}<span class="${isStruckTag(node.name)?'struck':''}">${esc(node.name)}</span>`;
   const fld=(label,val,extra)=>`<div class="dfield"><div class="dlabel">${esc(label)}</div><div class="dval ${val?'':'empty'}">${esc(val||'—')}${extra||''}</div></div>`;
   let html='';
   if(node.pmdBuilding)html+=fld('Building',node.pmdBuilding);

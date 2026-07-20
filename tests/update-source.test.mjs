@@ -128,13 +128,35 @@ test('changelog modal is available from update tabs and the version link', () =>
   assert.match(html, /\.change-entry\{[^}]*flex:0 0 auto/)
 })
 
-test('equipment tags consistently drop a trailing -P suffix', () => {
-  assert.match(html, /const cleanTag=v=>clean\(v\)\.replace\(\/-P\$\/i,''\)/)
-  assert.match(html, /const s=cleanTag\(row\[cols\.source\]\)/)
-  assert.match(html, /const id=cleanTag\(row\[cols\.idName\]\)/)
-  assert.match(html, /const loadDesc=cols\.loadDesc>=0\?cleanTag\(row\[cols\.loadDesc\]\):''/)
-  assert.match(html, /const load=cleanTag\(aoa\[i\]\[loadC\]\)/)
+test('equipment tags consistently drop trailing -P and -S suffixes', () => {
+  assert.ok(html.includes("const cleanTag=v=>clean(v).replace(/(?:-(?:P|S))+$/i,'');"))
+  assert.match(html, /function rowTag\(row,col,rec,rowIndex\)/)
+  assert.match(html, /const tag=col>=0\?cleanTag\(row\[col\]\):''/)
+  assert.match(html, /const source=rowTag\(row,cols\.source,rec,rowIndex\)/)
+  assert.match(html, /const loadDesc=rowTag\(row,cols\.loadDesc,rec,rowIndex\)/)
   assert.match(html, /rows\.push\(\{equip:cleanTag\(aoa\[i\]\[cols\.equip\]\)/)
+})
+
+test('imported strike formatting is retained in the app and Excel exports', () => {
+  assert.match(html, /function extractStrikeCells\(bytes\)/)
+  assert.match(html, /fflate\.unzipSync\(bytes\)/)
+  assert.match(html, /styles\.querySelectorAll\('fonts > font'\)/)
+  assert.match(html, /sheetDoc\.querySelectorAll\('c'\)/)
+  assert.match(html, /cell\.parentElement\?\.getAttribute\('s'\)/)
+  assert.match(html, /rec\.strikes=extractStrikeCells\(bytes\)/)
+  assert.match(html, /struckTags:new Set\(\)/)
+  assert.match(html, /function styleStrikeTags\(ws,rowStart,columns\)/)
+  assert.match(html, /font:\{\.\.\.\(\(cell\.s&&cell\.s\.font\)\|\|\{\}\),strike:true\}/)
+  assert.match(html, /\.struck\{text-decoration:line-through/)
+})
+
+test('Load Description wins over duplicate hierarchy roles and no-ID loads use Final Source', () => {
+  assert.match(html, /function collectLoadDescriptionTags\(keys,tick\)/)
+  assert.match(html, /if\(!value\|\|\(loadTags&&loadTags\.has\(tagKey\(value\)\)\)\)return/)
+  assert.match(html, /const finalSource=low\.findIndex/)
+  assert.match(html, /let \{segs,hasId,hasRawId,loadDesc,finalSource\}=rowToPath/)
+  assert.match(html, /const finalParent=!hasRawId&&finalSource\?finalSource:''/)
+  assert.match(html, /const meta=finalParent\?\{keepDuplicateDep:true\}:null/)
 })
 
 test('PMD workbooks auto-select INSTALL PMD and add instrument hierarchy metadata', () => {
@@ -395,16 +417,19 @@ test('review tab groups columns by their source system', () => {
 })
 
 test('comparison and SSM exports replace duplicated dependency values with N/A', () => {
-  assert.match(html, /function sameRegisterValue\(a,b\)\{return clean\(a\)\.toLowerCase\(\)===clean\(b\)\.toLowerCase\(\);\}/)
-  assert.match(html, /function registerDepValue\(parent,dep\)\{/)
-  assert.match(html, /return d&&sameRegisterValue\(parent,d\)\?'N\/A':d;/)
-  assert.match(html, /function ssmRegisterResolve\(r\)\{const o=ssmResolve\(r\);return \{\.\.\.o,dep:registerDepValue\(o\.parent,o\.dep\)\};\}/)
+  assert.match(html, /function registerCompareKey\(value\)/)
+  assert.match(html, /function sameRegisterValue\(a,b\)\{return registerCompareKey\(a\)===registerCompareKey\(b\);\}/)
+  assert.match(html, /function registerDepValue\(parent,dep,keepDuplicate\)\{/)
+  assert.match(html, /return d&&!keepDuplicate&&sameRegisterValue\(parent,d\)\?'N\/A':d;/)
+  assert.match(html, /dep:registerDepValue\(o\.parent,o\.dep,o\.keepDuplicateDep\)/)
   assert.match(html, /const curParent=a\?a\.parent:''/)
-  assert.match(html, /const curDep=a\?registerDepValue\(a\.parent,a\.dep\):''/)
+  assert.match(html, /const curDep=a\?registerDepValue\(a\.parent,a\.dep,a\.keepDuplicateDep\):''/)
   assert.match(html, /const wcParent=b\?b\.parent:''/)
-  assert.match(html, /const wcDep=b\?registerDepValue\(b\.parent,b\.dep\):''/)
+  assert.match(html, /const wcDep=b\?registerDepValue\(b\.parent,b\.dep,!!\(a&&a\.keepDuplicateDep\)\):''/)
   assert.match(html, /status=\(eq\(curParent,wcParent\)&&eq\(curDep,wcDep\)\)\?'match':'off'/)
   assert.equal((html.match(/const \{equip,parent,dep\}=ssmRegisterResolve\(r\)/g) || []).length, 2)
+  assert.match(html, /function registerDisplayValue\(value\)/)
+  assert.match(html, /compareMakeCell\(a,b\).*registerDisplayValue\(a\).*registerDisplayValue\(b\)/)
 })
 
 test('LotusWorks logo is embedded in the single HTML header', () => {
