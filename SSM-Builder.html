@@ -231,7 +231,6 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .badge-root{width:24px;height:24px;flex:0 0 auto;border-radius:6px;display:grid;place-items:center;align-self:center;background:linear-gradient(150deg,var(--accent-500),var(--accent-700));color:#fff;margin-right:2px;box-shadow:0 2px 6px -2px rgba(234,88,12,.7)}
 .badge-root .ic{width:14px;height:14px}
 .lbl{align-self:center;padding:0 6px;white-space:nowrap;color:var(--ink)}
-.struck{text-decoration:line-through;text-decoration-thickness:1.5px}
 .row.root .lbl{font-weight:680;font-size:14px;letter-spacing:-.2px}
 .lbl-leaf{color:var(--ink-2)}
 .cnt{align-self:center;margin-left:4px;font-size:10.5px;color:var(--ink-3);background:var(--surface-3);border:1px solid var(--border);padding:1px 7px;border-radius:99px;font-weight:600}
@@ -614,13 +613,21 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.8';
+const APP_VERSION = '1.1.9';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.9',
+    date:'2026-07-20T16:31:16Z',
+    type:'fix',
+    stats:{fixes:1,improvements:1},
+    notes:`- Fixed strikethrough tags appearing crossed out in the app and SSM exports
+- Added Cable Schedule strikethrough status to equipment details`
+  },
   {
     version:'1.1.8',
     date:'2026-07-20T15:30:00Z',
@@ -1017,7 +1024,7 @@ function initUpdateCheck(){
 const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:new Set(),override:{},aoaCache:new Map(),
   roots:[],sheets:[],ssmCombined:[],nodeById:new Map(),stats:null,search:'',idOnly:false,
   showSpares:true,showSpaces:true,showDeps:true,showPmdMatches:true,deps:new Map(),depDetail:new Map(),hasCable:false,
-  struckTags:new Set(),
+  cableStruckTags:new Set(),
   pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdSuffixMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
   epDetail:new Map(),epNameSet:new Set(),review:[],workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
   cmpFilter:'all',cmpSearch:'',cmpDiff:'all',cmpSort:null,revSearch:'',revSort:null,revMinPct:null,showStats:true,
@@ -1026,8 +1033,6 @@ const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:n
 let _uid=0,_nid=0;
 const fileById=id=>S.files.find(f=>f.id===id);
 const tagKey=value=>cleanTag(value).toLowerCase();
-const isStruckTag=value=>S.struckTags.has(tagKey(value));
-const struckClass=value=>isStruckTag(value)?' struck':'';
 
 const RESULT_PANEL_CACHE_LIMIT=24;
 let _virtualTok=0,_cmpPrewarmTok=0;
@@ -1395,9 +1400,7 @@ function getAoa(key){
 function sheetRowCount(key){const {aoa,headerRow}=getAoa(key);return Math.max(0,aoa.length-headerRow-1);}
 function cellIsStruck(rec,row,col){const sourceRow=rec&&rec.rowNums?rec.rowNums[row]:row;return !!(rec&&sourceRow!=null&&col>=0&&rec.strikes&&rec.strikes.has(XLSX.utils.encode_cell({r:sourceRow,c:col})));}
 function rowTag(row,col,rec,rowIndex){
-  const tag=col>=0?cleanTag(row[col]):'';
-  if(tag&&cellIsStruck(rec,rowIndex,col))S.struckTags.add(tagKey(tag));
-  return tag;
+  return col>=0?cleanTag(row[col]):'';
 }
 async function collectLoadDescriptionTags(keys,tick){
   const tags=new Set();
@@ -1729,6 +1732,8 @@ async function buildDeps(tick){
       if(tick)await tick('Reading cable schedule');
       const row=aoa[i],load=rowTag(row,loadC,rec,i);if(!load)continue;
       const lk=load.toLowerCase(),panel=rowTag(row,panelC,rec,i);
+      if(cellIsStruck(rec,i,loadC))S.cableStruckTags.add(tagKey(load));
+      if(panel&&cellIsStruck(rec,i,panelC))S.cableStruckTags.add(tagKey(panel));
       if(!S.deps.has(lk)&&panel)S.deps.set(lk,panel);
       if(!S.depDetail.has(lk)){
         const fields={};for(const [label,idx] of ents)fields[label]=(label==='Load Name (To)'||label==='Panel (From)')?cleanTag(row[idx]):clean(row[idx]);
@@ -1838,7 +1843,7 @@ async function buildHierarchy(){
     const tick=async(label)=>{done++;await maybeYield(report,READ_LO+(READ_HI-READ_LO)*(done/total),label);};
 
     report(.02,'Reading source data');await raf();
-    S.struckTags=new Set();
+    S.cableStruckTags=new Set();
     const loadTags=await collectLoadDescriptionTags(keys,tick);
     await buildDeps(tick);
     await buildPmd(tick);
@@ -2164,11 +2169,11 @@ function mountVirtualRows(tbodySel,rows,makeRow,emptyHtml,opts){
 /* ---- Review panel (cable not in Easy Power) ---- */
 function reviewMakeRow(r){
   const pm=r.matches.length
-    ? `<div class="pmcell">${r.matches.map((m,i)=>`<span class="pm ${i===0?'best':''}${struckClass(m.match)}">${esc(m.match)}<span class="pmpct">${m.pct}%</span></span>`).join('')}</div>`
+    ? `<div class="pmcell">${r.matches.map((m,i)=>`<span class="pm ${i===0?'best':''}">${esc(m.match)}<span class="pmpct">${m.pct}%</span></span>`).join('')}</div>`
     : '<span class="muted">—</span>';
   const best=r.matches[0];
   const pct=best?`<span class="pct ${best.pct>=95?'hi':''}">${best.pct}%</span>`:'';
-  return `<tr><td class="mono${struckClass(r.load)}">${esc(r.load)}</td><td class="mono${struckClass(r.panel)}">${esc(r.panel||'—')}</td><td class="mono">${esc(r.circuit||'—')}</td><td>${pm}</td><td>${pct}</td></tr>`;
+  return `<tr><td class="mono">${esc(r.load)}</td><td class="mono">${esc(r.panel||'—')}</td><td class="mono">${esc(r.circuit||'—')}</td><td>${pm}</td><td>${pct}</td></tr>`;
 }
 function sortReviewList(rows){
   const s=S.revSort;if(!s)return rows;
@@ -2291,10 +2296,10 @@ function compareRowsFor(filter,search,diff,sort){
   return sortCompareList(rows,sort);
 }
 function compareRows(){return compareRowsFor(S.cmpFilter,S.cmpSearch,S.cmpDiff,S.cmpSort);}
-function compareMakeCell(a,b){const diff=!sameRegisterValue(a,b);return `<td class="mono ${diff?'diff':''}${struckClass(a)}">${esc(registerDisplayValue(a))}</td><td class="mono ${diff?'diff':''}${struckClass(b)}">${esc(registerDisplayValue(b))}</td>`;}
+function compareMakeCell(a,b){const diff=!sameRegisterValue(a,b);return `<td class="mono ${diff?'diff':''}">${esc(registerDisplayValue(a))}</td><td class="mono ${diff?'diff':''}">${esc(registerDisplayValue(b))}</td>`;}
 function compareMakeRow(r){
   const sub=r.status==='nohit'?`<span class="subtle">${r.inCur?'only in extracted':'only in working copy'}</span>`:'';
-  return `<tr class="r-${r.status}"><td class="mono${struckClass(r.equip)}">${esc(r.equip)}</td><td><span class="cbadge ${r.status}">${ic(CMP_ICON[r.status])}${CMP_LABEL[r.status]}</span>${sub}</td>${compareMakeCell(r.curParent,r.wcParent)}${compareMakeCell(r.curDep,r.wcDep)}</tr>`;
+  return `<tr class="r-${r.status}"><td class="mono">${esc(r.equip)}</td><td><span class="cbadge ${r.status}">${ic(CMP_ICON[r.status])}${CMP_LABEL[r.status]}</span>${sub}</td>${compareMakeCell(r.curParent,r.wcParent)}${compareMakeCell(r.curDep,r.wcDep)}</tr>`;
 }
 function getCompareRowsCache(filter,search,diff,sort){
   const key=compareRowsCacheKey(filter,search,diff,sort),hit=cacheGet(S.viewCache.compareRows,key);
@@ -2401,23 +2406,23 @@ function lblHtml(name,hl){
 function rowInner(node,prefixArr,isLast,isRoot,hl){
   const kids=kidsOf(node),hasKids=kids.length>0;
   const dep=nodeDep(node);
-  const depBadge=dep?`<span class="dep ${node.isLoad?'dep-load':''}${struckClass(dep)}" title="${node.isLoad?'Dependency · equipment above':'Dependency · Panel (From)'}">${ic('spline')}${esc(dep)}</span>`:'';
+  const depBadge=dep?`<span class="dep ${node.isLoad?'dep-load':''}" title="${node.isLoad?'Dependency · equipment above':'Dependency · Panel (From)'}">${ic('spline')}${esc(dep)}</span>`:'';
   const pmdBadge=node.pmdPanel?`<span class="dep pmd-link" title="Matched PMD panel">${ic('database')}${esc(node.pmdPanel)}</span>`:'';
   const descTitle=node.isInstrument&&node.description?` title="${esc(node.description)}"`:'';
   const nk=clean(node.name).toLowerCase();
-  const infoBtn=(S.depDetail.has(nk)||S.epDetail.has(nk)||node.pmdKey||node.pmdPanel)?`<button class="rowinfo" data-detail="${node.id}" title="Details" aria-label="Details for ${esc(node.name)}">${ic('info')}</button>`:'';
+  const infoBtn=(S.depDetail.has(nk)||S.epDetail.has(nk)||S.cableStruckTags.has(tagKey(node.name))||node.pmdKey||node.pmdPanel)?`<button class="rowinfo" data-detail="${node.id}" title="Details" aria-label="Details for ${esc(node.name)}">${ic('info')}</button>`:'';
   if(isRoot){
     return `<div class="row root ${hasKids?'':'leafrow'}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
       ${hasKids?`<span class="twist">${ic('chevron-right')}</span>`:'<span class="twist"></span>'}
       <span class="badge-root">${ic('zap')}</span>
-      <span class="lbl${struckClass(node.name)}"${descTitle}>${lblHtml(node.name,hl)}</span>
+      <span class="lbl"${descTitle}>${lblHtml(node.name,hl)}</span>
       ${depBadge}${pmdBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${infoBtn}</div>`;
   }
   const marker=hasKids?'<span class="marker branch"></span>':(node.isInstrument?`<span class="marker instrument">${ic('database')}</span>`:node.isLoad?`<span class="marker load">${ic('corner-down-right')}</span>`:node.isId?`<span class="marker leaf">${ic('tag')}</span>`:'<span class="marker dot"></span>');
   return `<div class="row ${hasKids?'':'leafrow'} ${node.isLoad?'is-load':''} ${node.isInstrument?'is-instrument':''} ${node.isSpare?'is-spare':''} ${node.isSpace?'is-space':''}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
     <span class="gut">${gutterHtml(prefixArr,isLast)}</span>
     ${hasKids?`<span class="twist">${ic('chevron-right')}</span>`:'<span class="twist"></span>'}
-    ${marker}<span class="lbl ${hasKids?'':'lbl-leaf'}${struckClass(node.name)}"${descTitle}>${lblHtml(node.name,hl)}</span>
+    ${marker}<span class="lbl ${hasKids?'':'lbl-leaf'}"${descTitle}>${lblHtml(node.name,hl)}</span>
     ${depBadge}${pmdBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${infoBtn}</div>`;
 }
 function makeNode(node,prefixArr,isLast,isRoot){
@@ -2647,12 +2652,6 @@ function setFilter(ws,headerRow){
   const rng=XLSX.utils.decode_range(ws['!ref']);
   ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:headerRow,c:rng.s.c},e:{r:rng.e.r,c:rng.e.c}})};
 }
-function styleStrikeCell(cell){if(cell)cell.s={...(cell.s||{}),font:{...((cell.s&&cell.s.font)||{}),strike:true}};}
-function styleStrikeTags(ws,rowStart,columns){
-  if(!ws['!ref'])return;
-  const end=XLSX.utils.decode_range(ws['!ref']).e.r;
-  for(let r=rowStart;r<=end;r++)for(const c of columns){const cell=ws[XLSX.utils.encode_cell({r,c})];if(cell&&isStruckTag(cell.v))styleStrikeCell(cell);}
-}
 /* Indented hierarchy; depth -> column. Dependency sits in the cell right after the
    node's name (one column over), per request. Spares/Spaces honor the view toggles. */
 function addHierSheet(wb,name,roots,used){
@@ -2665,7 +2664,6 @@ function addHierSheet(wb,name,roots,used){
   ws['!cols']=Array.from({length:width},()=>({wch:22}));
   const rng=XLSX.utils.decode_range(ws['!ref']);            // bold the top-level (root) rows
   for(let R=0;R<=rng.e.r;R++){const ad=XLSX.utils.encode_cell({r:R,c:0});const cell=ws[ad];if(cell&&clean(cell.v)!=='')cell.s=XL_ROOT;}
-  styleStrikeTags(ws,0,[...Array(width).keys()]);
   addSheet(wb,ws,name,used,0);
 }
 /* Exto SSM: Equipment ID -> K, Closest Parent -> P, Dependencies -> AM (header row 2, data row 3).
@@ -2677,7 +2675,6 @@ function addExtoSheet(wb,name,rows,used){
   for(const r of filterSsm(rows)){const {equip,parent,dep}=ssmRegisterResolve(r);const row=new Array(W).fill('');row[K]=equip;row[P]=registerDisplayValue(parent);row[AM]=registerDisplayValue(dep);aoa.push(row);}
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   const cols=new Array(W).fill(0).map(()=>({wch:9}));cols[K]={wch:26};cols[P]={wch:26};cols[AM]={wch:24};ws['!cols']=cols;
-  styleStrikeTags(ws,2,[K,P,AM]);
   styleHeaderRow(ws,1);                                     // only the K/P/AM header cells are non-empty
   addSheet(wb,ws,name,used,2);
 }
@@ -2687,7 +2684,6 @@ function addSsm3Sheet(wb,name,rows,used){
   for(const r of filterSsm(rows)){const {equip,parent,dep}=ssmRegisterResolve(r);aoa.push([equip,registerDisplayValue(parent),registerDisplayValue(dep)]);}
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=[{wch:28},{wch:28},{wch:24}];
-  styleStrikeTags(ws,1,[0,1,2]);
   styleHeaderRow(ws,0);setFilter(ws,0);
   addSheet(wb,ws,name,used,1);
 }
@@ -2707,7 +2703,6 @@ function addReviewSheet(wb,used){
   ws['!cols']=[{wch:28},{wch:20},{wch:16},{wch:26},{wch:7},{wch:26},{wch:7},{wch:26},{wch:7}];
   const rng=XLSX.utils.decode_range(ws['!ref']);            // show % as "86%", centered, numeric-sortable
   for(let R=1;R<=rng.e.r;R++)for(const C of [4,6,8]){const cell=ws[XLSX.utils.encode_cell({r:R,c:C})];if(cell&&typeof cell.v==='number'){cell.z='0"%"';cell.s=XL_PCT;}}
-  styleStrikeTags(ws,1,[0,1,3,5,7]);
   styleHeaderRow(ws,0);setFilter(ws,0);
   addSheet(wb,ws,'Review - Cable not in EP',used,1);
 }
@@ -2729,7 +2724,6 @@ function addCompareSheet(wb,used){
       if(!sameRegisterValue(r.curDep,r.wcDep)){for(const C of[4,5]){const c=ws[XLSX.utils.encode_cell({r:R,c:C})];if(c)c.s=XL_DIFF;}}
     }
   });
-  styleStrikeTags(ws,1,[0,2,3,4,5]);
   styleHeaderRow(ws,0);setFilter(ws,0);
   addSheet(wb,ws,'Comparison',used,1);
 }
@@ -2801,9 +2795,10 @@ function openDetail(nodeId){
   const nk=clean(node.name).toLowerCase();
   const d=S.depDetail.get(nk),ep=S.epDetail.get(nk);
   const pmd=node.pmdKey?S.pmdDetail.get(node.pmdKey):null;
-  $('#drawerTitle').innerHTML=`${ic(node.isInstrument?'database':node.isLoad?'corner-down-right':'spline')}<span class="${isStruckTag(node.name)?'struck':''}">${esc(node.name)}</span>`;
+  $('#drawerTitle').innerHTML=`${ic(node.isInstrument?'database':node.isLoad?'corner-down-right':'spline')}<span>${esc(node.name)}</span>`;
   const fld=(label,val,extra)=>`<div class="dfield"><div class="dlabel">${esc(label)}</div><div class="dval ${val?'':'empty'}">${esc(val||'—')}${extra||''}</div></div>`;
   let html='';
+  if(S.cableStruckTags.has(tagKey(node.name)))html+=fld('Cable Schedule status','Struck through in source');
   if(node.pmdBuilding)html+=fld('Building',node.pmdBuilding);
   if(node.pmdPanel)html+=fld('PMD Panel Match',node.pmdPanel);
   // Dependency (load descriptions point at the equipment above them)

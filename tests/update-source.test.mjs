@@ -131,23 +131,25 @@ test('changelog modal is available from update tabs and the version link', () =>
 test('equipment tags consistently drop trailing -P and -S suffixes', () => {
   assert.ok(html.includes("const cleanTag=v=>clean(v).replace(/(?:-(?:P|S))+$/i,'');"))
   assert.match(html, /function rowTag\(row,col,rec,rowIndex\)/)
-  assert.match(html, /const tag=col>=0\?cleanTag\(row\[col\]\):''/)
+  assert.match(html, /return col>=0\?cleanTag\(row\[col\]\):''/)
   assert.match(html, /const source=rowTag\(row,cols\.source,rec,rowIndex\)/)
   assert.match(html, /const loadDesc=rowTag\(row,cols\.loadDesc,rec,rowIndex\)/)
   assert.match(html, /rows\.push\(\{equip:cleanTag\(aoa\[i\]\[cols\.equip\]\)/)
 })
 
-test('imported strike formatting is retained in the app and Excel exports', () => {
+test('imported strike formatting is shown only as Cable Schedule sidebar metadata', () => {
   assert.match(html, /function extractStrikeCells\(bytes\)/)
   assert.match(html, /fflate\.unzipSync\(bytes\)/)
   assert.match(html, /styles\.querySelectorAll\('fonts > font'\)/)
   assert.match(html, /sheetDoc\.querySelectorAll\('c'\)/)
   assert.match(html, /cell\.parentElement\?\.getAttribute\('s'\)/)
   assert.match(html, /rec\.strikes=extractStrikeCells\(bytes\)/)
-  assert.match(html, /struckTags:new Set\(\)/)
-  assert.match(html, /function styleStrikeTags\(ws,rowStart,columns\)/)
-  assert.match(html, /font:\{\.\.\.\(\(cell\.s&&cell\.s\.font\)\|\|\{\}\),strike:true\}/)
-  assert.match(html, /\.struck\{text-decoration:line-through/)
+  assert.match(html, /cableStruckTags:new Set\(\)/)
+  assert.match(html, /if\(cellIsStruck\(rec,i,loadC\)\)S\.cableStruckTags\.add\(tagKey\(load\)\)/)
+  assert.match(html, /if\(panel&&cellIsStruck\(rec,i,panelC\)\)S\.cableStruckTags\.add\(tagKey\(panel\)\)/)
+  assert.match(html, /S\.cableStruckTags\.has\(tagKey\(node\.name\)\).*rowinfo/)
+  assert.match(html, /fld\('Cable Schedule status','Struck through in source'\)/)
+  assert.doesNotMatch(html, /function styleStrikeCell|function styleStrikeTags|struckClass|text-decoration:line-through/)
 })
 
 test('Load Description wins over duplicate hierarchy roles and no-ID loads use Final Source', () => {
