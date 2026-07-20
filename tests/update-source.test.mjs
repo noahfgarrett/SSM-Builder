@@ -170,7 +170,7 @@ test('Load Description relations use ID Name, Final Source, and self-match rules
   assert.match(html, /function addLoadChild\(deepNode,loadName,dependency\)/)
   assert.match(html, /loadDependency:m\.loadDependency\|\|''/)
   assert.match(html, /let \{segs,hasId,idName,loadDesc,finalSource\}=rowToPath/)
-  assert.match(html, /const rel=loadSsmRelation\(idName,finalSource,loadDesc\),meta=rel\.keepDuplicateDep\?\{keepDuplicateDep:true\}:null/)
+  assert.match(html, /const rel=melCorrectLoadRelation\(loadDesc,loadSsmRelation\(idName,finalSource,loadDesc\)\),meta=rel\.keepDuplicateDep\?\{keepDuplicateDep:true\}:null/)
   assert.match(html, /addLoadChild\(lcDeep,loadDesc,rel\.dep\);addLoadChild\(lsDeep,loadDesc,rel\.dep\)/)
   const value = runInNewContext(`${customScript}
     JSON.stringify([
@@ -191,6 +191,77 @@ test('Load Description relations use ID Name, Final Source, and self-match rules
     JSON.stringify(result);
   `, { console, setTimeout, clearTimeout })
   assert.deepEqual(JSON.parse(pathValue).segs, ['ROOT', 'DS-1', 'SHARED', 'ID-1'])
+})
+
+test('Equipment_List tabs auto-select and index MEL Equipment Tag and UPN values', () => {
+  assert.match(html, /melSel:new Set\(\)/)
+  assert.match(html, /melRows:\[\],melByTag:new Map\(\)/)
+  assert.match(html, /const MEL_SHEET_NAME='equipmentlist'/)
+  assert.match(html, /function isMelSheet\(key\)/)
+  assert.match(html, /function detectMel\(headers\)/)
+  assert.match(html, /norm\.indexOf\('equipmenttag'\),upn=norm\.indexOf\('upn'\)/)
+  assert.match(html, /function melInfo\(key\)/)
+  assert.match(html, /if\(isMelSheet\(k\)\)S\.melSel\.add\(k\)/)
+  assert.match(html, /!isMelSheet\(key\)&&!isPmdSheet\(key\)&&!isCableSheet\(key\)/)
+  assert.match(html, /data-mel="\$\{esc\(key\)\}"/)
+  assert.match(html, /Equipment Tag → UPN/)
+  assert.match(html, /function buildMel\(tick\)/)
+  assert.match(html, /const rec=\{tag,upn\};S\.melRows\.push\(rec\);S\.melByTag\.set\(keyTag,rec\)/)
+  const value = runInNewContext(`${customScript}
+    JSON.stringify([
+      detectMel(['Description','Equipment Tag','UPN']),
+      detectMel(['Equipment','Unit Number']),
+      isMelSheet('file\\u0001Equipment_List'),
+      isMelSheet('file\\u0001Other')
+    ]);
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), [{ tag: 1, upn: 2 }, null, true, false])
+})
+
+test('MEL corrects LV transformer parents only when the exact four-character candidate exists', () => {
+  assert.match(html, /function melRoleAfterFirstHyphen\(value,role\)/)
+  assert.match(html, /function melCorrectClosestParent\(equipment,parent\)/)
+  assert.match(html, /const candidate=current\.slice\(0,-4\)\+equip\.slice\(-4\),match=melRecord\(candidate\)/)
+  assert.match(html, /function applyMelParentCorrections\(segs,loadDesc\)/)
+  assert.match(html, /segs=applyMelParentCorrections\(gisBusCut\(segs\),loadDesc\)/)
+  assert.match(html, /function melCorrectLoadRelation\(loadDesc,relation\)/)
+  const value = runInNewContext(`${customScript}
+    S.melByTag=new Map([
+      ['plant-xfmx373b',{tag:'PLANT-XFMX373B',upn:'A07'}],
+      ['plant-lvxx373b',{tag:'PLANT-LVXX373B',upn:'107'}]
+    ]);
+    const exact=melCorrectClosestParent('PLANT-LVXX373B','PLANT-XFMX372B');
+    const noCandidate=melCorrectClosestParent('PLANT-LVXX374B','PLANT-XFMX372B');
+    const notLv=melCorrectClosestParent('PLANT-MTRX373B','PLANT-XFMX372B');
+    const notXfm=melCorrectClosestParent('PLANT-LVXX373B','PLANT-MTRX372B');
+    const laterHyphen=melCorrectClosestParent('PLANT-AREA-LVXX373B','PLANT-XFMX372B');
+    const path=applyMelParentCorrections(['ROOT','PLANT-XFMX372B','PLANT-LVXX373B'],'');
+    const loadPath=applyMelParentCorrections(['ROOT','PLANT-XFMX372B'],'PLANT-LVXX373B');
+    const relation=melCorrectLoadRelation('PLANT-LVXX373B',{parent:'PLANT-XFMX372B',dep:'PLANT-XFMX372B',keepDuplicateDep:true});
+    JSON.stringify({exact,noCandidate,notLv,notXfm,laterHyphen,path,loadPath,relation,upn:melUpn('plant-lvxx373b')});
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), {
+    exact: 'PLANT-XFMX373B',
+    noCandidate: 'PLANT-XFMX372B',
+    notLv: 'PLANT-XFMX372B',
+    notXfm: 'PLANT-MTRX372B',
+    laterHyphen: 'PLANT-XFMX372B',
+    path: ['ROOT', 'PLANT-XFMX373B', 'PLANT-LVXX373B'],
+    loadPath: ['ROOT', 'PLANT-XFMX373B'],
+    relation: { parent: 'PLANT-XFMX373B', dep: 'PLANT-XFMX373B', keepDuplicateDep: true },
+    upn: '107',
+  })
+})
+
+test('MEL UPN values appear in hierarchy details and requested SSM columns', () => {
+  assert.match(html, /melRecord\(node\.name\).*rowinfo/)
+  assert.match(html, /const pmd=node\.pmdKey\?S\.pmdDetail\.get\(node\.pmdKey\):null,mel=melRecord\(node\.name\)/)
+  assert.match(html, /if\(S\.melRows\.length\)html\+=fld\('UPN',mel\?mel\.upn:''\)/)
+  assert.match(html, /const G=6,K=10,P=15,AM=38,W=39/)
+  assert.match(html, /head\[G\]='UPN';head\[K\]='Equipment ID'/)
+  assert.match(html, /row\[G\]=melUpn\(equip\);row\[K\]=equip/)
+  assert.match(html, /\['Equipment ID','Closest Parent','Dependencies','UPN'\]/)
+  assert.match(html, /registerDisplayValue\(dep\),melUpn\(equip\)/)
 })
 
 test('PMD workbooks auto-select INSTALL PMD and add instrument hierarchy metadata', () => {

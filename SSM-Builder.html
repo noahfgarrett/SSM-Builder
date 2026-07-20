@@ -345,6 +345,9 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .ficon.pmd{background:#eef3fb;color:#2f5fa8;border-color:#d6e3f5}
 .pmdgrp .grp-h{background:#f4f7fc}
 .srow.pmd .sname .ic{color:#2f5fa8}
+.ficon.mel{background:#edf8f1;color:#287a4b;border-color:#cfe8d8}
+.melgrp .grp-h{background:#f3faf5}
+.srow.mel .sname .ic{color:#287a4b}
 
 /* cable schedule detail drawer */
 .drawer-back{position:fixed;inset:0;z-index:68;background:rgba(28,30,34,.38);backdrop-filter:blur(2px);display:none}
@@ -613,13 +616,21 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.14';
+const APP_VERSION = '1.1.15';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.15',
+    date:'2026-07-20T20:08:52Z',
+    type:'feature',
+    stats:{features:2},
+    notes:`- Added Master Equipment List imports for correcting LV transformer parents with exact MEL matches
+- Added MEL UPN values to hierarchy details and SSM exports`
+  },
   {
     version:'1.1.14',
     date:'2026-07-20T19:28:49Z',
@@ -1061,11 +1072,12 @@ function initUpdateCheck(){
   if(!isPwaHostedApp())checkForAppUpdate().then(info=>{if(info)showUpdateModal(info);});
 }
 
-const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:new Set(),override:{},aoaCache:new Map(),
+const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:new Set(),melSel:new Set(),override:{},aoaCache:new Map(),
   roots:[],sheets:[],ssmCombined:[],nodeById:new Map(),stats:null,search:'',idOnly:false,
   showSpares:true,showSpaces:true,showDeps:true,showPmdMatches:true,deps:new Map(),depDetail:new Map(),hasCable:false,
   cableStruckTags:new Set(),
   pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdSuffixMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
+  melRows:[],melByTag:new Map(),
   epDetail:new Map(),epNameSet:new Set(),review:[],workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
   cmpFilter:'all',cmpSearch:'',cmpDiff:'all',cmpSort:null,revSearch:'',revSort:null,revMinPct:null,showStats:true,
   resultFullscreen:false,
@@ -1352,6 +1364,24 @@ function pmdPanelMatchParts(value){
   return {key,matchKey,building};
 }
 function pmdPanelKey(value){return pmdPanelMatchParts(value).key;}
+/* ---- Master Equipment List (Equipment Tag -> UPN) ---- */
+const MEL_SHEET_NAME='equipmentlist';
+const _melCache=new Map();
+function isMelSheet(key){return normH(key.split(KEYSEP)[1])===MEL_SHEET_NAME;}
+function detectMel(headers){
+  const norm=headers.map(normH),tag=norm.indexOf('equipmenttag'),upn=norm.indexOf('upn');
+  return tag>=0&&upn>=0?{tag,upn}:null;
+}
+function melInfo(key){
+  if(_melCache.has(key))return _melCache.get(key);
+  const {aoa}=getAoa(key);let res=null;
+  for(let r=0;r<Math.min(aoa.length,60);r++){
+    const map=detectMel((aoa[r]||[]).map(clean));
+    if(map){res={map,headerRow:r};break;}
+  }
+  _melCache.set(key,res);return res;
+}
+function melRowCount(key){const mi=melInfo(key);if(!mi)return sheetRowCount(key);const {aoa}=getAoa(key);return Math.max(0,aoa.length-mi.headerRow-1);}
 /* ---- Current Working Copy (an SSM-like sheet: Equipment ID / Closest Parent / Dependencies) ---- */
 function detectWC(headers){
   const norm=headers.map(normH);
@@ -1603,7 +1633,7 @@ function renderFileList(){
   const hint=$('#uphint');if(hint)hint.textContent=okFiles.length?`${okFiles.length} file${okFiles.length!==1?'s':''} · ${tabs} tab${tabs!==1?'s':''} ready`:'';
   const cont=$('#toSheets');if(cont)cont.disabled=okFiles.length===0;
   const clr=$('#clearall');if(clr)clr.style.display=S.files.length?'':'none';
-  $$('.xbtn').forEach(b=>b.onclick=()=>{const id=b.dataset.id;S.files=S.files.filter(f=>f.id!==id);[...S.selected,...S.cableSel,...S.pmdSel].forEach(k=>{if(k.split(KEYSEP)[0]===id){S.selected.delete(k);S.cableSel.delete(k);S.pmdSel.delete(k);}});renderFileList();});
+  $$('.xbtn').forEach(b=>b.onclick=()=>{const id=b.dataset.id;S.files=S.files.filter(f=>f.id!==id);[...S.selected,...S.cableSel,...S.pmdSel,...S.melSel].forEach(k=>{if(k.split(KEYSEP)[0]===id){S.selected.delete(k);S.cableSel.delete(k);S.pmdSel.delete(k);S.melSel.delete(k);}});renderFileList();});
 }
 function wireUpload(){
   const dz=$('#dz'),input=$('#file');
@@ -1614,7 +1644,7 @@ function wireUpload(){
   ['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');}));
   ['dragleave','dragend'].forEach(ev=>dz.addEventListener(ev,e=>{if(e.target===dz)dz.classList.remove('drag');}));
   dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');addFiles([...e.dataTransfer.files]);});
-  $('#clearall').onclick=()=>{S.files=[];S.aoaCache.clear();S.selected.clear();S.cableSel.clear();S.pmdSel.clear();S.override={};S.workCopy=null;S.wcRows=null;renderFileList();renderWorkCopy();};
+  $('#clearall').onclick=()=>{S.files=[];S.aoaCache.clear();S.selected.clear();S.cableSel.clear();S.pmdSel.clear();S.melSel.clear();S.override={};S.workCopy=null;S.wcRows=null;renderFileList();renderWorkCopy();};
   $('#toSheets').onclick=async()=>{if($('#toSheets').disabled)return;await prewarmSheets();go('sheets');};
 }
 async function addFiles(fileObjs){
@@ -1642,8 +1672,9 @@ async function prewarmSheets(){
     report(1,`${keys.length} tab${keys.length!==1?'s':''} scanned`);
   });
   // default: use every detected Cable Schedule tab for dependencies
-  allKeys().forEach(k=>{if(!isPmdSheet(k)&&isCableSheet(k))S.cableSel.add(k);});
+  allKeys().forEach(k=>{if(!isPmdSheet(k)&&!isMelSheet(k)&&isCableSheet(k))S.cableSel.add(k);});
   S.files.forEach(f=>{if(isPmdFile(f))f.sheets.forEach(s=>{const key=f.id+KEYSEP+s;if(normH(s)===PMD_SHEET_NAME)S.pmdSel.add(key);});});
+  allKeys().forEach(k=>{if(isMelSheet(k))S.melSel.add(k);});
 }
 
 /* ---- sheets screen ---- */
@@ -1662,7 +1693,7 @@ function renderSheets(){
       <button class="btn ghost sm" id="selNone">Clear</button>
     </div>
     <div class="card-body">
-      <div class="note info" style="margin-bottom:14px">${ic('info')}<div>Hierarchy tabs build the tree (use <b>Edit columns</b> if a tab is flagged). Cable Schedule tabs attach dependencies. An <b>INSTALL PMD</b> tab is selected automatically to attach instruments to matching Load Descriptions.</div></div>
+      <div class="note info" style="margin-bottom:14px">${ic('info')}<div>Hierarchy tabs build the tree (use <b>Edit columns</b> if a tab is flagged). Cable Schedule tabs attach dependencies. <b>INSTALL PMD</b> and <b>Equipment_List</b> tabs are selected automatically for instrument and MEL data.</div></div>
       <div id="sheetgroups"></div>
     </div>
     <div class="actions" style="margin:0;padding:18px 22px">
@@ -1670,11 +1701,11 @@ function renderSheets(){
       <button class="btn primary spacer" id="build" disabled>Build hierarchy ${ic('chevron-right')}</button>
     </div>
   </section>`;
-  const cableKeys=[],pmdKeys=[];
+  const cableKeys=[],pmdKeys=[],melKeys=[];
   const groups=okFiles.map(f=>{
     const k=fileKindIcon(f.ext);
-    const hierSheets=f.sheets.filter(s=>{const key=f.id+KEYSEP+s;return !isPmdSheet(key)&&!isCableSheet(key);});
-    f.sheets.forEach(s=>{const key=f.id+KEYSEP+s;if(isPmdSheet(key))pmdKeys.push(key);else if(isCableSheet(key))cableKeys.push(key);});
+    const hierSheets=f.sheets.filter(s=>{const key=f.id+KEYSEP+s;return !isMelSheet(key)&&!isPmdSheet(key)&&!isCableSheet(key);});
+    f.sheets.forEach(s=>{const key=f.id+KEYSEP+s;if(isMelSheet(key))melKeys.push(key);else if(isPmdSheet(key))pmdKeys.push(key);else if(isCableSheet(key))cableKeys.push(key);});
     if(!hierSheets.length)return '';
     const rows=hierSheets.map(sheet=>{
       const key=f.id+KEYSEP+sheet,cols=resolveCols(key),sel=S.selected.has(key);
@@ -1687,6 +1718,20 @@ function renderSheets(){
     }).join('');
     return `<div class="grp"><div class="grp-h"><span class="ficon ${k.cls}">${ic(k.name)}</span><span class="gname">${esc(f.name)}</span><span class="gcount">${hierSheets.length} tab${hierSheets.length!==1?'s':''}</span></div><div class="sheets">${rows}</div></div>`;
   }).join('');
+  let melGroup='';
+  if(melKeys.length){
+    const rows=melKeys.map(key=>{
+      const [fid,sheet]=key.split(KEYSEP),mi=melInfo(key),sel=S.melSel.has(key);
+      const det=mi
+        ? `<span>Equipment Tag → UPN</span><span class="pill ok">${ic('check')}MEL columns detected</span>`
+        : `<span>Master Equipment List tab</span><span class="pill warn">${ic('triangle-alert')}Equipment Tag / UPN not found</span>`;
+      return `<div class="srow mel ${sel?'on':''}" data-mel="${esc(key)}">
+        <label class="chk"><input type="checkbox" ${sel?'checked':''}><span class="box">${ic('check')}</span></label>
+        <div class="sinfo"><div class="sname">${ic('tag')}${esc(sheet)} <span class="srows">${melRowCount(key)} rows · ${esc(fileById(fid).name)}</span></div>
+        <div class="sdet">${det}</div></div></div>`;
+    }).join('');
+    melGroup=`<div class="grp melgrp"><div class="grp-h"><span class="ficon mel">${ic('tag')}</span><span class="gname">Master Equipment List</span><span class="gcount">${melKeys.length} tab${melKeys.length!==1?'s':''}</span></div><div class="sheets">${rows}</div></div>`;
+  }
   let pmdGroup='';
   if(pmdKeys.length){
     const rows=pmdKeys.map(key=>{
@@ -1715,7 +1760,7 @@ function renderSheets(){
     }).join('');
     cableGroup=`<div class="grp cablegrp"><div class="grp-h"><span class="ficon cable">${ic('spline')}</span><span class="gname">Cable Schedule — dependencies</span><span class="gcount">${cableKeys.length} tab${cableKeys.length!==1?'s':''}</span></div><div class="sheets">${rows}</div></div>`;
   }
-  $('#sheetgroups').innerHTML=groups+pmdGroup+cableGroup;
+  $('#sheetgroups').innerHTML=groups+melGroup+pmdGroup+cableGroup;
   wireSheets();updateSelInfo();
 }
 function wireSheets(){
@@ -1742,8 +1787,14 @@ function wireSheets(){
     row.addEventListener('click',e=>{if(e.target.closest('.chk'))return;set(!S.pmdSel.has(key));});
     cb.addEventListener('change',()=>set(cb.checked));
   });
+  $$('.srow[data-mel]').forEach(row=>{
+    const key=row.dataset.mel,cb=row.querySelector('input');
+    const set=on=>{if(on)S.melSel.add(key);else S.melSel.delete(key);cb.checked=on;row.classList.toggle('on',on);updateSelInfo();};
+    row.addEventListener('click',e=>{if(e.target.closest('.chk'))return;set(!S.melSel.has(key));});
+    cb.addEventListener('change',()=>set(cb.checked));
+  });
 }
-function allHierKeys(){return S.files.filter(f=>!f.error).flatMap(f=>f.sheets.map(s=>f.id+KEYSEP+s)).filter(k=>!isPmdSheet(k)&&!isCableSheet(k));}
+function allHierKeys(){return S.files.filter(f=>!f.error).flatMap(f=>f.sheets.map(s=>f.id+KEYSEP+s)).filter(k=>!isMelSheet(k)&&!isPmdSheet(k)&&!isCableSheet(k));}
 function allKeys(){return S.files.filter(f=>!f.error).flatMap(f=>f.sheets.map(s=>f.id+KEYSEP+s));}
 function toggleEditPanel(key,row){
   const panel=row.nextElementSibling;
@@ -1760,12 +1811,51 @@ function toggleEditPanel(key,row){
   panel.hidden=!panel.hidden;
 }
 function updateSelInfo(){
-  const n=S.selected.size,c=S.cableSel.size,p=S.pmdSel.size,info=$('#selinfo');
-  if(info)info.textContent=(n?`${n} hierarchy tab${n!==1?'s':''}`:'No hierarchy tabs')+(c?` · ${c} cable schedule`:'')+(p?` · ${p} PMD tab${p!==1?'s':''}`:'');
+  const n=S.selected.size,c=S.cableSel.size,p=S.pmdSel.size,m=S.melSel.size,info=$('#selinfo');
+  if(info)info.textContent=(n?`${n} hierarchy tab${n!==1?'s':''}`:'No hierarchy tabs')+(c?` · ${c} cable schedule`:'')+(p?` · ${p} PMD tab${p!==1?'s':''}`:'')+(m?` · ${m} MEL tab${m!==1?'s':''}`:'');
   const b=$('#build');if(b)b.disabled=n===0;
 }
 
 /* ---- build ---- */
+async function buildMel(tick){
+  S.melRows=[];S.melByTag=new Map();
+  for(const key of S.melSel){
+    const [fid]=key.split(KEYSEP);if(!fileById(fid))continue;
+    const mi=melInfo(key);if(!mi)continue;
+    const {map,headerRow}=mi,{aoa}=getAoa(key);
+    for(let i=headerRow+1;i<aoa.length;i++){
+      if(tick)await tick('Reading Master Equipment List');
+      const tag=cleanTag(aoa[i][map.tag]);if(!tag)continue;
+      const upn=clean(aoa[i][map.upn]),keyTag=tagKey(tag),existing=S.melByTag.get(keyTag);
+      if(existing){if(!existing.upn&&upn)existing.upn=upn;continue;}
+      const rec={tag,upn};S.melRows.push(rec);S.melByTag.set(keyTag,rec);
+    }
+  }
+}
+function melRecord(value){return S.melByTag.get(tagKey(value))||null;}
+function melUpn(value){const rec=melRecord(value);return rec?rec.upn:'';}
+function melRoleAfterFirstHyphen(value,role){
+  const tag=cleanTag(value),dash=tag.indexOf('-');
+  return dash>=0&&tag.slice(dash+1).toUpperCase().startsWith(role);
+}
+function melCorrectClosestParent(equipment,parent){
+  const equip=cleanTag(equipment),current=cleanTag(parent);
+  if(equip.length<4||current.length<4||!melRoleAfterFirstHyphen(equip,'LV')||!melRoleAfterFirstHyphen(current,'XFM'))return current;
+  const candidate=current.slice(0,-4)+equip.slice(-4),match=melRecord(candidate);
+  return match?match.tag:current;
+}
+function applyMelParentCorrections(segs,loadDesc){
+  const out=segs.slice();
+  for(let i=out.length-1;i>0;i--)out[i-1]=melCorrectClosestParent(out[i],out[i-1]);
+  if(out.length&&loadDesc)out[out.length-1]=melCorrectClosestParent(loadDesc,out[out.length-1]);
+  return out;
+}
+function melCorrectLoadRelation(loadDesc,relation){
+  const original=relation.parent,corrected=melCorrectClosestParent(loadDesc,original);
+  if(corrected===original)return relation;
+  const dep=relation.dep&&tagKey(relation.dep)===tagKey(original)?corrected:relation.dep;
+  return {...relation,parent:corrected,dep};
+}
 async function buildDeps(tick){
   S.deps=new Map();S.depDetail=new Map();S.hasCable=false;
   for(const key of S.cableSel){
@@ -1889,14 +1979,16 @@ async function buildHierarchy(){
     const rowsIn=key=>{const {aoa,headerRow}=getAoa(key);return Math.max(0,aoa.length-headerRow-1);};
     let cableRows=0;for(const k of S.cableSel)if(cableInfo(k)){cableRows+=Math.max(0,(getAoa(k).aoa.length)-(cableInfo(k).headerRow)-1);}
     let pmdRows=0;for(const k of S.pmdSel)if(pmdInfo(k)){pmdRows+=Math.max(0,getAoa(k).aoa.length-pmdInfo(k).headerRow-1);}
+    let melRows=0;for(const k of S.melSel)if(melInfo(k)){melRows+=Math.max(0,getAoa(k).aoa.length-melInfo(k).headerRow-1);}
     let hierRows=0;for(const k of keys)hierRows+=rowsIn(k);
-    const total=Math.max(1,cableRows+pmdRows+hierRows*2);let done=0;
+    const total=Math.max(1,cableRows+pmdRows+melRows+hierRows*2);let done=0;
     const READ_LO=.03,READ_HI=.78;
     const tick=async(label)=>{done++;await maybeYield(report,READ_LO+(READ_HI-READ_LO)*(done/total),label);};
 
     report(.02,'Reading source data');await raf();
     S.cableStruckTags=new Set();
     const loadTags=await collectLoadDescriptionTags(keys,tick);
+    await buildMel(tick);
     await buildDeps(tick);
     await buildPmd(tick);
     S.epDetail=new Map();
@@ -1913,7 +2005,7 @@ async function buildHierarchy(){
       for(let i=headerRow+1;i<aoa.length;i++){
         await tick(label);
         let {segs,hasId,idName,loadDesc,finalSource}=rowToPath(aoa[i],cols,rec,i,loadTags);
-        segs=gisBusCut(segs);              // disregard BUS + everything above a GIS→BUS→GIS
+        segs=applyMelParentCorrections(gisBusCut(segs),loadDesc); // also correct MEL-backed LV transformer parents
         if(!segs.length)continue;
         rowsRead++;
         const deepest=segs[segs.length-1];
@@ -1932,7 +2024,7 @@ async function buildHierarchy(){
         // Load Description register relationships come from ID Name or Final Source;
         // a matching ID Name uses Final Source as parent with no dependency.
         if(validLoad(loadDesc,deepest)){
-          const rel=loadSsmRelation(idName,finalSource,loadDesc),meta=rel.keepDuplicateDep?{keepDuplicateDep:true}:null,lkey=acc+KEYSEP+'\u0006'+loadDesc;
+          const rel=melCorrectLoadRelation(loadDesc,loadSsmRelation(idName,finalSource,loadDesc)),meta=rel.keepDuplicateDep?{keepDuplicateDep:true}:null,lkey=acc+KEYSEP+'\u0006'+loadDesc;
           addLoadChild(lcDeep,loadDesc,rel.dep);addLoadChild(lsDeep,loadDesc,rel.dep);
           if(circuit)noteEP(loadDesc,circuit);
           const loadRow=meta?[loadDesc,rel.parent,rel.dep,meta]:[loadDesc,rel.parent,rel.dep];
@@ -2472,7 +2564,7 @@ function rowInner(node,prefixArr,isLast,isRoot,hl){
   const pmdBadge=node.pmdPanel?`<span class="dep pmd-link" title="Matched PMD panel">${ic('database')}${esc(node.pmdPanel)}</span>`:'';
   const descTitle=node.isInstrument&&node.description?` title="${esc(node.description)}"`:'';
   const nk=clean(node.name).toLowerCase();
-  const infoBtn=(S.depDetail.has(nk)||S.epDetail.has(nk)||S.cableStruckTags.has(tagKey(node.name))||node.pmdKey||node.pmdPanel)?`<button class="rowinfo" data-detail="${node.id}" title="Details" aria-label="Details for ${esc(node.name)}">${ic('info')}</button>`:'';
+  const infoBtn=(S.depDetail.has(nk)||S.epDetail.has(nk)||S.cableStruckTags.has(tagKey(node.name))||melRecord(node.name)||node.pmdKey||node.pmdPanel)?`<button class="rowinfo" data-detail="${node.id}" title="Details" aria-label="Details for ${esc(node.name)}">${ic('info')}</button>`:'';
   if(isRoot){
     return `<div class="row root ${hasKids?'':'leafrow'}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
       ${hasKids?`<span class="twist">${ic('chevron-right')}</span>`:'<span class="twist"></span>'}
@@ -2728,24 +2820,24 @@ function addHierSheet(wb,name,roots,used){
   for(let R=0;R<=rng.e.r;R++){const ad=XLSX.utils.encode_cell({r:R,c:0});const cell=ws[ad];if(cell&&clean(cell.v)!=='')cell.s=XL_ROOT;}
   addSheet(wb,ws,name,used,0);
 }
-/* Exto SSM: Equipment ID -> K, Closest Parent -> P, Dependencies -> AM (header row 2, data row 3).
+/* Exto SSM: UPN -> G, Equipment ID -> K, Closest Parent -> P, Dependencies -> AM (header row 2, data row 3).
    Load Description rows: Closest Parent blank, Dependency = equipment above. */
 function addExtoSheet(wb,name,rows,used){
-  const K=10,P=15,AM=38,W=39,aoa=[];
+  const G=6,K=10,P=15,AM=38,W=39,aoa=[];
   aoa.push(new Array(W).fill(''));
-  const head=new Array(W).fill('');head[K]='Equipment ID';head[P]='Closest Parent';head[AM]='Dependencies';aoa.push(head);
-  for(const r of filterSsm(rows)){const {equip,parent,dep}=ssmRegisterResolve(r);const row=new Array(W).fill('');row[K]=equip;row[P]=registerDisplayValue(parent);row[AM]=registerDisplayValue(dep);aoa.push(row);}
+  const head=new Array(W).fill('');head[G]='UPN';head[K]='Equipment ID';head[P]='Closest Parent';head[AM]='Dependencies';aoa.push(head);
+  for(const r of filterSsm(rows)){const {equip,parent,dep}=ssmRegisterResolve(r);const row=new Array(W).fill('');row[G]=melUpn(equip);row[K]=equip;row[P]=registerDisplayValue(parent);row[AM]=registerDisplayValue(dep);aoa.push(row);}
   const ws=XLSX.utils.aoa_to_sheet(aoa);
-  const cols=new Array(W).fill(0).map(()=>({wch:9}));cols[K]={wch:26};cols[P]={wch:26};cols[AM]={wch:24};ws['!cols']=cols;
-  styleHeaderRow(ws,1);                                     // only the K/P/AM header cells are non-empty
+  const cols=new Array(W).fill(0).map(()=>({wch:9}));cols[G]={wch:12};cols[K]={wch:26};cols[P]={wch:26};cols[AM]={wch:24};ws['!cols']=cols;
+  styleHeaderRow(ws,1);                                     // only the G/K/P/AM header cells are non-empty
   addSheet(wb,ws,name,used,2);
 }
-/* Plain SSM: Equipment ID, Closest Parent, Dependencies side by side (A/B/C). */
+/* Plain SSM: Equipment ID, Closest Parent, Dependencies, UPN side by side (A/B/C/D). */
 function addSsm3Sheet(wb,name,rows,used){
-  const aoa=[['Equipment ID','Closest Parent','Dependencies']];
-  for(const r of filterSsm(rows)){const {equip,parent,dep}=ssmRegisterResolve(r);aoa.push([equip,registerDisplayValue(parent),registerDisplayValue(dep)]);}
+  const aoa=[['Equipment ID','Closest Parent','Dependencies','UPN']];
+  for(const r of filterSsm(rows)){const {equip,parent,dep}=ssmRegisterResolve(r);aoa.push([equip,registerDisplayValue(parent),registerDisplayValue(dep),melUpn(equip)]);}
   const ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:28},{wch:28},{wch:24}];
+  ws['!cols']=[{wch:28},{wch:28},{wch:24},{wch:12}];
   styleHeaderRow(ws,0);setFilter(ws,0);
   addSheet(wb,ws,name,used,1);
 }
@@ -2856,10 +2948,11 @@ function openDetail(nodeId){
   const node=S.nodeById.get(nodeId);if(!node)return;
   const nk=clean(node.name).toLowerCase();
   const d=S.depDetail.get(nk),ep=S.epDetail.get(nk);
-  const pmd=node.pmdKey?S.pmdDetail.get(node.pmdKey):null;
+  const pmd=node.pmdKey?S.pmdDetail.get(node.pmdKey):null,mel=melRecord(node.name);
   $('#drawerTitle').innerHTML=`${ic(node.isInstrument?'database':node.isLoad?'corner-down-right':'spline')}<span>${esc(node.name)}</span>`;
   const fld=(label,val,extra)=>`<div class="dfield"><div class="dlabel">${esc(label)}</div><div class="dval ${val?'':'empty'}">${esc(val||'—')}${extra||''}</div></div>`;
   let html='';
+  if(S.melRows.length)html+=fld('UPN',mel?mel.upn:'');
   if(S.cableStruckTags.has(tagKey(node.name)))html+=fld('Cable Schedule status','Struck through in source');
   if(node.pmdBuilding)html+=fld('Building',node.pmdBuilding);
   if(node.pmdPanel)html+=fld('PMD Panel Match',node.pmdPanel);
@@ -2885,7 +2978,7 @@ function openDetail(nodeId){
   if(pmd){
     for(const label of ['CARD','POINT POSITION','POINT TYPE','P&ID','Location','RELEASE'])html+=fld(label,pmd.fields[label]||'');
   }
-  if(!html)html=`<div class="note info">${ic('info')}<div>No cable schedule, Easy Power, or PMD detail for this tag.</div></div>`;
+  if(!html)html=`<div class="note info">${ic('info')}<div>No cable schedule, Easy Power, PMD, or MEL detail for this tag.</div></div>`;
   $('#drawerBody').innerHTML=html;
   $('#drawer').classList.add('show');
 }
