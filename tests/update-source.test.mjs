@@ -152,28 +152,31 @@ test('imported strike formatting is shown only as Cable Schedule sidebar metadat
   assert.doesNotMatch(html, /function styleStrikeCell|function styleStrikeTags|struckClass|text-decoration:line-through/)
 })
 
-test('Load Description dependencies use ID Name before falling back to Final Source', () => {
+test('Load Description relations use ID Name, Final Source, and self-match rules', () => {
   assert.match(html, /function collectLoadDescriptionTags\(keys,tick\)/)
   assert.match(html, /if\(!value\|\|\(loadTags&&loadTags\.has\(tagKey\(value\)\)\)\)return/)
   assert.match(html, /const finalSource=low\.findIndex/)
   assert.match(html, /return \{segs,hasId,idName:id,loadDesc,finalSource\}/)
-  assert.match(html, /function loadSsmRelation\(idName,finalSource\)/)
-  assert.match(html, /return \{parent,dep:id\|\|final,keepDuplicateDep:!id&&!!final\}/)
-  assert.match(html, /function nodeDep\(n\)\{return n\.isLoad\?\(n\.loadDependency\|\|\(n\.parent\?n\.parent\.name:''\)\):depOf\(n\.name\);\}/)
+  assert.match(html, /function loadSsmRelation\(idName,finalSource,loadDesc\)/)
+  assert.match(html, /if\(id&&tagKey\(id\)===tagKey\(load\)\)return \{parent:final,dep:'',keepDuplicateDep:false\}/)
+  assert.match(html, /return \{parent:relation,dep:relation,keepDuplicateDep:!!relation\}/)
+  assert.match(html, /function nodeDep\(n\)\{return n\.isLoad\?n\.loadDependency:depOf\(n\.name\);\}/)
   assert.match(html, /function addLoadChild\(deepNode,loadName,dependency\)/)
   assert.match(html, /loadDependency:m\.loadDependency\|\|''/)
   assert.match(html, /let \{segs,hasId,idName,loadDesc,finalSource\}=rowToPath/)
-  assert.match(html, /const rel=loadSsmRelation\(idName,finalSource\),meta=rel\.keepDuplicateDep\?\{keepDuplicateDep:true\}:null/)
+  assert.match(html, /const rel=loadSsmRelation\(idName,finalSource,loadDesc\),meta=rel\.keepDuplicateDep\?\{keepDuplicateDep:true\}:null/)
   assert.match(html, /addLoadChild\(lcDeep,loadDesc,rel\.dep\);addLoadChild\(lsDeep,loadDesc,rel\.dep\)/)
   const value = runInNewContext(`${customScript}
     JSON.stringify([
-      loadSsmRelation('ID-100-S','FINAL-1'),
-      loadSsmRelation('','FINAL-2-P')
+      loadSsmRelation('ID-100-S','FINAL-1','LOAD-1'),
+      loadSsmRelation('','FINAL-2-P','LOAD-2'),
+      loadSsmRelation('LOAD-3-S','FINAL-3','LOAD-3')
     ]);
   `, { console, setTimeout, clearTimeout })
   assert.deepEqual(JSON.parse(value), [
-    { parent: '', dep: 'ID-100', keepDuplicateDep: false },
+    { parent: 'ID-100', dep: 'ID-100', keepDuplicateDep: true },
     { parent: 'FINAL-2', dep: 'FINAL-2', keepDuplicateDep: true },
+    { parent: 'FINAL-3', dep: '', keepDuplicateDep: false },
   ])
 })
 
@@ -205,7 +208,7 @@ test('PMD workbooks auto-select INSTALL PMD and add instrument hierarchy metadat
 test('PMD rows are appended to SSM data with panels before instruments', () => {
   assert.match(html, /function appendPmdSsmRows\(rows,includeUnmatched\)/)
   assert.match(html, /function pmdExportTag\(value,building\)/)
-  assert.match(html, /const panelRows=links\.map\(link=>\[link\.loadName,'',existingDeps\.get\(link\.loadKey\)\|\|depOf\(link\.loadName\)\|\|depOf\(link\.panel\)\|\|''\]\)/)
+  assert.match(html, /const panelRows=links\.map\(link=>\{const row=existingRows\.get\(link\.loadKey\);return row\?\[link\.loadName,\.\.\.row\.slice\(1\)\]:\[link\.loadName,'',depOf\(link\.loadName\)\|\|depOf\(link\.panel\)\|\|''\];\}\)/)
   assert.match(html, /const instrumentRows=links\.flatMap\(link=>link\.instruments\.map\(rec=>\[pmdExportTag\(rec\.tag,link\.building\),link\.loadName,''\]\)\)/)
   assert.match(html, /return \[\.\.\.base,\.\.\.panelRows,\.\.\.instrumentRows\]/)
   assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(ssmCombined,true\)\)/)
@@ -297,7 +300,7 @@ test('building-prefixed PMD panels match trailing load descriptions and export w
   ])
   assert.equal(result.builtBuilding, 'OO44')
   assert.deepEqual(result.exported, [
-    ['RIO650-02-1', '', 'MTR-1'],
+    ['RIO650-02-1', 'MCC-1', 'MTR-1'],
     ['TET105-04-1', 'RIO650-02-1', ''],
     ['FIT-100', 'RIO650-02-1', ''],
   ])
