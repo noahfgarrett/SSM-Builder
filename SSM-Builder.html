@@ -613,13 +613,22 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.12';
+const APP_VERSION = '1.1.13';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.13',
+    date:'2026-07-20T17:42:22Z',
+    type:'fix',
+    stats:{fixes:2,improvements:1},
+    notes:`- Fixed hierarchy paths skipping numbered Downstream levels
+- Fixed later Downstream values appearing after the first blank
+- Improved shared Downstream and Load Description tags while preserving SSM precedence`
+  },
   {
     version:'1.1.12',
     date:'2026-07-20T17:27:30Z',
@@ -1249,7 +1258,7 @@ function resolveCols(key){
   let source=ov.source!=null?ov.source:(a.sourceAuto<0?0:a.sourceAuto);
   let idName=ov.idName!=null?ov.idName:(a.idAuto<0?headers.length-1:a.idAuto);
   let downstream;
-  if(a.dsPattern.length&&ov.source==null&&ov.idName==null){
+  if(a.dsPattern.length){
     downstream=a.dsPattern.filter(i=>i!==source&&i!==idName);
   }else{
     const lo=Math.min(source,idName),hi=Math.max(source,idName);downstream=[];
@@ -1443,15 +1452,16 @@ async function collectLoadDescriptionTags(keys,tick){
 function rowToPath(row,cols,rec,rowIndex,loadTags){
   const segs=[];let hasId=false;
   const source=rowTag(row,cols.source,rec,rowIndex);
-  const downstream=cols.downstream.map(col=>rowTag(row,col,rec,rowIndex));
+  const downstream=[];
+  for(const col of cols.downstream){const value=rowTag(row,col,rec,rowIndex);if(!value)break;downstream.push(value);}
   const finalSource=rowTag(row,cols.finalSource,rec,rowIndex);
   const id=rowTag(row,cols.idName,rec,rowIndex);
   const loadDesc=rowTag(row,cols.loadDesc,rec,rowIndex);
   const push=value=>{
-    if(!value||(loadTags&&loadTags.has(tagKey(value))))return;
+    if(!value)return;
     if(!segs.length||tagKey(segs[segs.length-1])!==tagKey(value))segs.push(value);
   };
-  push(source);downstream.forEach(push);push(finalSource);
+  push(source);downstream.forEach(push);if(!downstream.length)push(finalSource);
   if(id&&(!segs.length||tagKey(id)!==tagKey(segs[segs.length-1]))&&!(loadTags&&loadTags.has(tagKey(id)))){segs.push(id);hasId=true;}
   return {segs,hasId,idName:id,loadDesc,finalSource};
 }
@@ -1907,8 +1917,9 @@ async function buildHierarchy(){
         for(let j=0;j<segs.length;j++){
           acc=j?acc+KEYSEP+segs[j]:segs[j];
           const equip=segs[j],parent=j?segs[j-1]:'';
-          if(!seenC.has(acc)){seenC.add(acc);ssmCombined.push([equip,parent]);}
-          if(!seenS.has(acc)){seenS.add(acc);ssmRows.push([equip,parent]);}
+          const isLoadRole=loadTags.has(tagKey(equip));
+          if(!isLoadRole&&!seenC.has(acc)){seenC.add(acc);ssmCombined.push([equip,parent]);}
+          if(!isLoadRole&&!seenS.has(acc)){seenS.add(acc);ssmRows.push([equip,parent]);}
         }
         // Load Description register relationships come from ID Name or Final Source;
         // a matching ID Name uses Final Source as parent with no dependency.

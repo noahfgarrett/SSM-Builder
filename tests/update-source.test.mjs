@@ -154,7 +154,13 @@ test('imported strike formatting is shown only as Cable Schedule sidebar metadat
 
 test('Load Description relations use ID Name, Final Source, and self-match rules', () => {
   assert.match(html, /function collectLoadDescriptionTags\(keys,tick\)/)
-  assert.match(html, /if\(!value\|\|\(loadTags&&loadTags\.has\(tagKey\(value\)\)\)\)return/)
+  assert.match(html, /if\(a\.dsPattern\.length\)\{\s*downstream=a\.dsPattern\.filter/)
+  assert.match(html, /for\(const col of cols\.downstream\)\{const value=rowTag\(row,col,rec,rowIndex\);if\(!value\)break;downstream\.push\(value\);\}/)
+  assert.match(html, /const push=value=>\{\s*if\(!value\)return;/)
+  assert.match(html, /push\(source\);downstream\.forEach\(push\);if\(!downstream\.length\)push\(finalSource\)/)
+  assert.match(html, /const isLoadRole=loadTags\.has\(tagKey\(equip\)\)/)
+  assert.match(html, /if\(!isLoadRole&&!seenC\.has\(acc\)\)/)
+  assert.match(html, /if\(!isLoadRole&&!seenS\.has\(acc\)\)/)
   assert.match(html, /const finalSource=low\.findIndex/)
   assert.match(html, /return \{segs,hasId,idName:id,loadDesc,finalSource\}/)
   assert.match(html, /function loadSsmRelation\(idName,finalSource,loadDesc\)/)
@@ -178,6 +184,13 @@ test('Load Description relations use ID Name, Final Source, and self-match rules
     { parent: 'FINAL-2', dep: 'FINAL-2', keepDuplicateDep: true },
     { parent: 'FINAL-3', dep: '', keepDuplicateDep: false },
   ])
+  const pathValue = runInNewContext(`${customScript}
+    const cols={source:0,downstream:[1,2,3,4],finalSource:5,idName:6,loadDesc:7};
+    const rec={rowNums:[0],strikes:new Set()};
+    const result=rowToPath(['ROOT','DS-1','SHARED','','LATE-DOWNSTREAM','LATE-DOWNSTREAM','ID-1','LOAD-1'],cols,rec,0,new Set(['shared']));
+    JSON.stringify(result);
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(pathValue).segs, ['ROOT', 'DS-1', 'SHARED', 'ID-1'])
 })
 
 test('PMD workbooks auto-select INSTALL PMD and add instrument hierarchy metadata', () => {
