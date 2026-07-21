@@ -222,6 +222,7 @@ test('MEL corrects LV transformer parents only when the exact four-character can
   assert.match(html, /function melRoleAfterFirstHyphen\(value,role\)/)
   assert.match(html, /function melCorrectClosestParent\(equipment,parent\)/)
   assert.match(html, /const candidate=current\.slice\(0,-4\)\+equip\.slice\(-4\),match=melRecord\(candidate\)/)
+  assert.match(html, /if\(equip\.slice\(-4\)\.toLowerCase\(\)===current\.slice\(-4\)\.toLowerCase\(\)\)return current/)
   assert.match(html, /function applyMelParentCorrections\(segs,loadDesc\)/)
   assert.match(html, /segs=applyMelParentCorrections\(gisBusCut\(segs\),loadDesc\)/)
   assert.match(html, /function melCorrectLoadRelation\(loadDesc,relation\)/)
@@ -250,6 +251,60 @@ test('MEL corrects LV transformer parents only when the exact four-character can
     loadPath: ['ROOT', 'PLANT-XFMX373B'],
     relation: { parent: 'PLANT-XFMX373B', dep: 'PLANT-XFMX373B', keepDuplicateDep: true },
     upn: '107',
+  })
+})
+
+test('MEL inserts missing transformer levels and moves complete mismatched LVS branches', () => {
+  assert.match(html, /function repairMelTransformerBranches\(root\)/)
+  assert.match(html, /filter\(node=>melRoleAfterFirstHyphen\(node\.name,'XFM'\)\)/)
+  assert.match(html, /if\(!melRoleAfterFirstHyphen\(child\.name,'LVS'\)\)continue/)
+  assert.match(html, /transformer\.kids\.delete\(childKey\)/)
+  assert.match(html, /target\.kids\.set\(child\.name,child\)/)
+  assert.match(html, /function repairMelSsmRows\(rows\)/)
+  assert.match(html, /out\.push\(existing\?\[\.\.\.existing\]:\[corrected,sourceParent\?cleanTag\(sourceParent\[1\]\):''\]\)/)
+  assert.match(html, /fixed\[1\]=corrected/)
+  assert.match(html, /fixed\[2\]=corrected/)
+  const value = runInNewContext(`${customScript}
+    S.melByTag=new Map([
+      ['3f21-xfmy373b',{tag:'3F21-XFMY373B',upn:'373'}]
+    ]);
+    const child={name:'3F21-MTRY900A',kids:new Map(),isId:true};
+    const lvs372={name:'3F21-LVSY372B',kids:new Map(),isId:true};
+    const lvs373={name:'3F21-LVSY373B',kids:new Map([[child.name,child]]),isId:true};
+    const xfm372={name:'3F21-XFMY372B',kids:new Map([[lvs372.name,lvs372],[lvs373.name,lvs373]]),isId:false};
+    const root={name:'__root__',kids:new Map([[xfm372.name,xfm372]])};
+    const moved=repairMelTransformerBranches(root);
+    const xfm373=root.kids.get('3F21-XFMY373B');
+    const repairedRows=repairMelSsmRows([
+      ['ROOT',''],
+      ['3F21-XFMY372B','ROOT'],
+      ['3F21-LVSY372B','3F21-XFMY372B'],
+      ['3F21-LVSY373B','3F21-XFMY372B','3F21-XFMY372B',{keepDuplicateDep:true}],
+      ['3F21-MTRY900A','3F21-LVSY373B']
+    ]);
+    JSON.stringify({
+      moved,
+      rootKids:[...root.kids.keys()],
+      oldKids:[...xfm372.kids.keys()],
+      newKids:[...xfm373.kids.keys()],
+      movedDescendants:[...xfm373.kids.get('3F21-LVSY373B').kids.keys()],
+      repairedRows
+    });
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), {
+    moved: 1,
+    rootKids: ['3F21-XFMY372B', '3F21-XFMY373B'],
+    oldKids: ['3F21-LVSY372B'],
+    newKids: ['3F21-LVSY373B'],
+    movedDescendants: ['3F21-MTRY900A'],
+    repairedRows: [
+      ['ROOT', ''],
+      ['3F21-XFMY372B', 'ROOT'],
+      ['3F21-LVSY372B', '3F21-XFMY372B'],
+      ['3F21-XFMY373B', 'ROOT'],
+      ['3F21-LVSY373B', '3F21-XFMY373B', '3F21-XFMY373B', { keepDuplicateDep: true }],
+      ['3F21-MTRY900A', '3F21-LVSY373B'],
+    ],
   })
 })
 
@@ -295,8 +350,8 @@ test('PMD rows are appended to SSM data with panels before instruments', () => {
   assert.match(html, /const panelRows=links\.map\(link=>\{const row=existingRows\.get\(link\.loadKey\);return row\?\[link\.loadName,\.\.\.row\.slice\(1\)\]:\[link\.loadName,'',depOf\(link\.loadName\)\|\|depOf\(link\.panel\)\|\|''\];\}\)/)
   assert.match(html, /const instrumentRows=links\.flatMap\(link=>link\.instruments\.map\(rec=>\[pmdExportTag\(rec\.tag,link\.building\),link\.loadName,''\]\)\)/)
   assert.match(html, /return \[\.\.\.base,\.\.\.panelRows,\.\.\.instrumentRows\]/)
-  assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(ssmCombined,true\)\)/)
-  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(sh\.ssmRows,false\)\)/)
+  assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(repairMelSsmRows\(ssmCombined\),true\)\)/)
+  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(repairMelSsmRows\(sh\.ssmRows\),false\)\)/)
 })
 
 test('PMD base panels link to both CPS and NPS load variants with duplicated instruments', () => {
@@ -578,8 +633,8 @@ test('SSM registers keep one normalized Equipment ID across hierarchy and PMD ro
   assert.match(html, /function uniqueSsmRows\(rows\)\{/)
   assert.match(html, /const seen=new Set\(\),out=\[\];/)
   assert.match(html, /const key=tagKey\(row&&row\[0\]\);if\(!key\|\|seen\.has\(key\)\)continue;seen\.add\(key\);out\.push\(row\)/)
-  assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(ssmCombined,true\)\)/)
-  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(sh\.ssmRows,false\)\)/)
+  assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(repairMelSsmRows\(ssmCombined\),true\)\)/)
+  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(repairMelSsmRows\(sh\.ssmRows\),false\)\)/)
   assert.match(html, /function filterSsm\(rows\)\{return uniqueSsmRows\(rows\)\.filter/)
   const value = runInNewContext(`${customScript}
     JSON.stringify(uniqueSsmRows([

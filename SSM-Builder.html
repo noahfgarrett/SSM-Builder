@@ -616,13 +616,20 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.15';
+const APP_VERSION = '1.1.16';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.16',
+    date:'2026-07-21T14:13:31Z',
+    type:'fix',
+    stats:{fixes:1},
+    notes:`- Fixed mismatched LVS branches by inserting the matching MEL transformer and moving the complete subtree beneath it`
+  },
   {
     version:'1.1.15',
     date:'2026-07-20T20:08:52Z',
@@ -1841,6 +1848,7 @@ function melRoleAfterFirstHyphen(value,role){
 function melCorrectClosestParent(equipment,parent){
   const equip=cleanTag(equipment),current=cleanTag(parent);
   if(equip.length<4||current.length<4||!melRoleAfterFirstHyphen(equip,'LV')||!melRoleAfterFirstHyphen(current,'XFM'))return current;
+  if(equip.slice(-4).toLowerCase()===current.slice(-4).toLowerCase())return current;
   const candidate=current.slice(0,-4)+equip.slice(-4),match=melRecord(candidate);
   return match?match.tag:current;
 }
@@ -1855,6 +1863,61 @@ function melCorrectLoadRelation(loadDesc,relation){
   if(corrected===original)return relation;
   const dep=relation.dep&&tagKey(relation.dep)===tagKey(original)?corrected:relation.dep;
   return {...relation,parent:corrected,dep};
+}
+function rawKidEntry(kids,value){
+  const key=tagKey(value);
+  for(const entry of kids.entries())if(tagKey(entry[1].name)===key)return entry;
+  return null;
+}
+function mergeRawHierarchyNode(target,source){
+  target.isId=!!(target.isId||source.isId);target.isLoad=!!(target.isLoad||source.isLoad);target.isInstrument=!!(target.isInstrument||source.isInstrument);
+  for(const field of ['loadDependency','description','pmdKey','pmdPanel','pmdBuilding'])if(!target[field]&&source[field])target[field]=source[field];
+  for(const child of source.kids.values()){
+    const existing=rawKidEntry(target.kids,child.name);
+    if(existing)mergeRawHierarchyNode(existing[1],child);else target.kids.set(child.name,child);
+  }
+  return target;
+}
+function repairMelTransformerBranches(root){
+  let moved=0;
+  const visit=container=>{
+    const transformers=[...container.kids.values()].filter(node=>melRoleAfterFirstHyphen(node.name,'XFM'));
+    for(const transformer of transformers){
+      for(const [childKey,child] of [...transformer.kids.entries()]){
+        if(!melRoleAfterFirstHyphen(child.name,'LVS'))continue;
+        const corrected=melCorrectClosestParent(child.name,transformer.name);
+        if(tagKey(corrected)===tagKey(transformer.name))continue;
+        let targetEntry=rawKidEntry(container.kids,corrected),target=targetEntry&&targetEntry[1];
+        if(!target){target={name:corrected,kids:new Map(),isId:false};container.kids.set(corrected,target);}
+        transformer.kids.delete(childKey);
+        const existing=rawKidEntry(target.kids,child.name);
+        if(existing)mergeRawHierarchyNode(existing[1],child);else target.kids.set(child.name,child);
+        moved++;
+      }
+    }
+    for(const node of [...container.kids.values()])visit(node);
+  };
+  visit(root);return moved;
+}
+function repairMelSsmRows(rows){
+  if(!S.melByTag.size)return rows;
+  const byEquipment=new Map();for(const row of rows){const key=tagKey(row&&row[0]);if(key&&!byEquipment.has(key))byEquipment.set(key,row);}
+  const emitted=new Set(),out=[];
+  for(const row of rows){
+    const equip=cleanTag(row&&row[0]),parent=cleanTag(row&&row[1]),corrected=melCorrectClosestParent(equip,parent);
+    if(corrected!==parent){
+      const correctedKey=tagKey(corrected);
+      if(!emitted.has(correctedKey)){
+        const existing=byEquipment.get(correctedKey),sourceParent=byEquipment.get(tagKey(parent));
+        out.push(existing?[...existing]:[corrected,sourceParent?cleanTag(sourceParent[1]):'']);emitted.add(correctedKey);
+      }
+      const fixed=[...row];fixed[1]=corrected;
+      if(fixed[2]!=null&&tagKey(fixed[2])===tagKey(parent))fixed[2]=corrected;
+      out.push(fixed);emitted.add(tagKey(equip));continue;
+    }
+    out.push(row);emitted.add(tagKey(equip));
+  }
+  return out;
 }
 async function buildDeps(tick){
   S.deps=new Map();S.depDetail=new Map();S.hasCable=false;
@@ -2034,11 +2097,13 @@ async function buildHierarchy(){
       }
       sheets.push({key,sheetName,fileName:fileById(fid).name,_sMap:sMap,ssmRows}); // tree built lazily on export
     }
+    report(.79,'Repairing MEL transformer branches');await raf();
+    repairMelTransformerBranches(combined);for(const sh of sheets)repairMelTransformerBranches(sh._sMap);
     report(.80,'Linking PMD instruments');await raf();
     const instrumentCount=attachPmdInstruments(combined);
     for(const sh of sheets)_attachPmdInstruments(sh._sMap,null);
-    S.sheets=sheets;S.ssmCombined=uniqueSsmRows(appendPmdSsmRows(ssmCombined,true));
-    for(const sh of S.sheets)sh.ssmRows=uniqueSsmRows(appendPmdSsmRows(sh.ssmRows,false));
+    S.sheets=sheets;S.ssmCombined=uniqueSsmRows(appendPmdSsmRows(repairMelSsmRows(ssmCombined),true));
+    for(const sh of S.sheets)sh.ssmRows=uniqueSsmRows(appendPmdSsmRows(repairMelSsmRows(sh.ssmRows),false));
     report(.82,'Finalizing tree');await raf();
     S.roots=finalize(combined); // call last so nodeById matches the displayed combined tree
     // every equipment name in the Easy Power hierarchy (for cable cross-check)
