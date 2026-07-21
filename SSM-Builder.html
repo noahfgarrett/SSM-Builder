@@ -620,13 +620,21 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.20';
+const APP_VERSION = '1.1.21';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.21',
+    date:'2026-07-21T20:20:43Z',
+    type:'feature',
+    stats:{features:2},
+    notes:`- Added Cable Schedule parent-chain corrections when extracted parents and dependencies disagree
+- Added missing Cable Schedule panels to the hierarchy, Comparison, and SSM exports`
+  },
   {
     version:'1.1.20',
     date:'2026-07-21T19:17:53Z',
@@ -2054,6 +2062,115 @@ function repairEasyPowerSsmRows(rows){
   }
   return out;
 }
+function buildCableParentPlan(rows){
+  const existing=new Map();
+  for(const row of rows){const key=tagKey(row&&row[0]);if(key&&!existing.has(key))existing.set(key,row);}
+  const relations=new Map(),seeds=new Set(),generated=new Set();
+  for(const row of rows){
+    const equip=cleanTag(row&&row[0]),parent=cleanTag(row&&row[1]);
+    const dependency=row&&row[2]!=null?cleanTag(row[2]):depOf(equip);
+    const cableParent=depOf(equip),seedKey=tagKey(equip);
+    if(!equip||!parent||!dependency||tagKey(parent)!==tagKey(dependency)||!cableParent||tagKey(cableParent)===tagKey(parent))continue;
+    const local=[{equip,parent:cableParent,generated:false}],seen=new Set([seedKey]);
+    let cursor=cableParent,cyclic=false;
+    while(cursor){
+      const cursorKey=tagKey(cursor);
+      if(seen.has(cursorKey)){cyclic=true;break;}
+      seen.add(cursorKey);
+      if(cursorKey===tagKey(parent)||existing.has(cursorKey)||relations.has(cursorKey))break;
+      const upstream=depOf(cursor);
+      local.push({equip:cursor,parent:upstream,generated:true});
+      if(!upstream)break;
+      cursor=upstream;
+    }
+    if(cyclic)continue;
+    seeds.add(seedKey);
+    for(const relation of local){
+      const key=tagKey(relation.equip);if(relations.has(key))continue;
+      relations.set(key,{equip:relation.equip,parent:relation.parent});
+      if(relation.generated)generated.add(key);
+    }
+  }
+  return {relations,seeds,generated};
+}
+function cablePlannedParents(plan,equipment){
+  const names=[],seen=new Set();let relation=plan.relations.get(tagKey(equipment));
+  while(relation&&relation.parent){
+    const key=tagKey(relation.parent);if(seen.has(key))break;
+    seen.add(key);names.push(relation.parent);relation=plan.relations.get(key);
+  }
+  return names;
+}
+function findRawHierarchyNode(holder,value,blocked){
+  const key=tagKey(value);
+  for(const node of holder.kids.values()){
+    if(node===blocked)continue;
+    if(tagKey(node.name)===key)return node;
+    const found=findRawHierarchyNode(node,value,blocked);if(found)return found;
+  }
+  return null;
+}
+function ensureRawHierarchyChild(holder,name){
+  const existing=rawKidEntry(holder.kids,name);if(existing)return existing[1];
+  const node={name,kids:new Map(),isId:false};holder.kids.set(name,node);return node;
+}
+function repairCableHierarchyParents(root,plan){
+  if(!plan||!plan.seeds.size)return 0;
+  const occurrences=[];
+  const collect=(holder,ancestors,depth)=>{
+    for(const [key,node] of holder.kids.entries()){
+      if(plan.seeds.has(tagKey(node.name)))occurrences.push({holder,key,node,ancestors:[...ancestors],depth});
+      collect(node,[...ancestors,holder],depth+1);
+    }
+  };
+  collect(root,[],0);occurrences.sort((a,b)=>b.depth-a.depth);
+  let moved=0;
+  for(const occurrence of occurrences){
+    const entry=rawKidEntry(occurrence.holder.kids,occurrence.node.name);
+    if(!entry||entry[1]!==occurrence.node)continue;
+    const relation=plan.relations.get(tagKey(occurrence.node.name)),chain=cablePlannedParents(plan,occurrence.node.name);
+    if(!relation||!chain.length||tagKey(occurrence.holder.name)===tagKey(relation.parent))continue;
+    const local=[occurrence.holder,...occurrence.ancestors.slice().reverse()];let anchor=null,anchorIndex=-1;
+    for(let i=0;i<chain.length&&!anchor;i++)for(const candidate of local)if(tagKey(candidate.name)===tagKey(chain[i])){anchor=candidate;anchorIndex=i;break;}
+    if(!anchor){
+      for(let i=0;i<chain.length;i++){
+        const found=findRawHierarchyNode(root,chain[i],occurrence.node);
+        if(found){anchor=found;anchorIndex=i;break;}
+      }
+    }
+    occurrence.holder.kids.delete(entry[0]);
+    let target;
+    if(anchor){target=anchor;for(let i=anchorIndex-1;i>=0;i--)target=ensureRawHierarchyChild(target,chain[i]);}
+    else{target=ensureRawHierarchyChild(root,chain[chain.length-1]);for(let i=chain.length-2;i>=0;i--)target=ensureRawHierarchyChild(target,chain[i]);}
+    if(occurrence.node.isLoad)occurrence.node.loadDependency=relation.parent;
+    const duplicate=rawKidEntry(target.kids,occurrence.node.name);
+    if(duplicate)mergeRawHierarchyNode(duplicate[1],occurrence.node);else target.kids.set(occurrence.node.name,occurrence.node);
+    moved++;
+  }
+  return moved;
+}
+function cablePlannedSsmRow(relation,row){
+  const fixed=row?[...row]:[relation.equip,'',''];fixed[0]=row?row[0]:relation.equip;fixed[1]=relation.parent;fixed[2]=relation.parent;
+  if(relation.parent){const meta=fixed[3]&&typeof fixed[3]==='object'?{...fixed[3]}:{};meta.keepDuplicateDep=true;fixed[3]=meta;}
+  return fixed;
+}
+function repairCableSsmRows(rows,plan){
+  if(!plan||!plan.seeds.size)return rows;
+  const out=[],emittedGenerated=new Set();
+  const emitGenerated=key=>{
+    if(!plan.generated.has(key)||emittedGenerated.has(key))return;
+    const relation=plan.relations.get(key);if(!relation)return;
+    const parentKey=tagKey(relation.parent);if(parentKey)emitGenerated(parentKey);
+    out.push(cablePlannedSsmRow(relation,null));emittedGenerated.add(key);
+  };
+  for(const row of rows){
+    const key=tagKey(row&&row[0]),relation=plan.relations.get(key);
+    if(plan.seeds.has(key)&&relation){emitGenerated(tagKey(relation.parent));out.push(cablePlannedSsmRow(relation,row));}
+    else out.push(row);
+  }
+  for(const key of plan.generated)emitGenerated(key);
+  return out;
+}
 async function buildDeps(tick){
   S.deps=new Map();S.depDetail=new Map();S.hasCable=false;
   for(const key of S.cableSel){
@@ -2236,11 +2353,19 @@ async function buildHierarchy(){
     repairMelTransformerBranches(combined);for(const sh of sheets)repairMelTransformerBranches(sh._sMap);
     report(.795,'Applying MEL parent rules');await raf();
     repairEasyPowerHierarchyParents(combined);for(const sh of sheets)repairEasyPowerHierarchyParents(sh._sMap);
+    report(.798,'Applying Cable Schedule parent chains');await raf();
+    const preparedCombined=repairEasyPowerSsmRows(repairMelSsmRows(ssmCombined)),combinedCablePlan=buildCableParentPlan(preparedCombined);
+    repairCableHierarchyParents(combined,combinedCablePlan);
+    const finalCombinedRows=repairCableSsmRows(preparedCombined,combinedCablePlan);
+    for(const sh of sheets){
+      const prepared=repairEasyPowerSsmRows(repairMelSsmRows(sh.ssmRows)),plan=buildCableParentPlan(prepared);
+      repairCableHierarchyParents(sh._sMap,plan);sh.ssmRows=repairCableSsmRows(prepared,plan);
+    }
     report(.80,'Linking PMD instruments');await raf();
     const instrumentCount=attachPmdInstruments(combined);
     for(const sh of sheets)_attachPmdInstruments(sh._sMap,null);
-    S.sheets=sheets;S.ssmCombined=uniqueSsmRows(appendPmdSsmRows(repairEasyPowerSsmRows(repairMelSsmRows(ssmCombined)),true));
-    for(const sh of S.sheets)sh.ssmRows=uniqueSsmRows(appendPmdSsmRows(repairEasyPowerSsmRows(repairMelSsmRows(sh.ssmRows)),false));
+    S.sheets=sheets;S.ssmCombined=uniqueSsmRows(appendPmdSsmRows(finalCombinedRows,true));
+    for(const sh of S.sheets)sh.ssmRows=uniqueSsmRows(appendPmdSsmRows(sh.ssmRows,false));
     report(.82,'Finalizing tree');await raf();
     S.roots=finalize(combined); // call last so nodeById matches the displayed combined tree
     // every equipment name in the Easy Power hierarchy (for cable cross-check)

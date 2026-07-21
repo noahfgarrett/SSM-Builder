@@ -204,6 +204,75 @@ test('Load Description relations use ID Name, Final Source, and self-match rules
   assert.deepEqual(JSON.parse(pathValue).segs, ['ROOT', 'DS-1', 'SHARED', 'ID-1'])
 })
 
+test('Cable Schedule chains replace duplicate parents and add missing hierarchy panels', () => {
+  assert.match(html, /function buildCableParentPlan\(rows\)/)
+  assert.match(html, /tagKey\(parent\)!==tagKey\(dependency\)/)
+  assert.match(html, /function repairCableHierarchyParents\(root,plan\)/)
+  assert.match(html, /function repairCableSsmRows\(rows,plan\)/)
+  assert.match(html, /meta\.keepDuplicateDep=true/)
+  assert.match(html, /repairCableHierarchyParents\(combined,combinedCablePlan\)/)
+  assert.match(html, /repairCableHierarchyParents\(sh\._sMap,plan\)/)
+  const value = runInNewContext(`${customScript}
+    S.deps=new Map([
+      ['load-a','CABLE-PANEL-1'],
+      ['cable-panel-1','CABLE-PANEL-2'],
+      ['cable-panel-2','EP-PARENT'],
+      ['load-b','SAME-PANEL'],
+      ['load-cycle','CYCLE-PANEL'],
+      ['cycle-panel','LOAD-CYCLE']
+    ]);
+    const rows=[
+      ['ROOT',''],
+      ['EP-PARENT','ROOT'],
+      ['LOAD-A','EP-PARENT','EP-PARENT',{keepDuplicateDep:true}],
+      ['LOAD-B','SAME-PANEL','SAME-PANEL',{keepDuplicateDep:true}],
+      ['LOAD-CYCLE','OLD-CYCLE','OLD-CYCLE',{keepDuplicateDep:true}]
+    ];
+    const plan=buildCableParentPlan(rows),repaired=repairCableSsmRows(rows,plan);
+    const child={name:'INSTRUMENT-A',kids:new Map(),isId:false};
+    const load={name:'LOAD-A',kids:new Map([[child.name,child]]),isId:false,isLoad:true,loadDependency:'EP-PARENT'};
+    const ep={name:'EP-PARENT',kids:new Map([[load.name,load]]),isId:true};
+    const source={name:'ROOT',kids:new Map([[ep.name,ep]]),isId:false};
+    const tree={name:'__root__',kids:new Map([[source.name,source]])};
+    repairCableHierarchyParents(tree,plan);
+    const panel2=ep.kids.get('CABLE-PANEL-2'),panel1=panel2&&panel2.kids.get('CABLE-PANEL-1'),moved=panel1&&panel1.kids.get('LOAD-A');
+    JSON.stringify({
+      relations:[...plan.relations.values()],
+      seeds:[...plan.seeds],
+      generated:[...plan.generated],
+      epKids:[...ep.kids.keys()],
+      panel2Kids:panel2?[...panel2.kids.keys()]:[],
+      panel1Kids:panel1?[...panel1.kids.keys()]:[],
+      movedDependency:moved&&moved.loadDependency,
+      movedKids:moved?[...moved.kids.keys()]:[],
+      repaired:repaired.map(row=>ssmResolve(row))
+    });
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), {
+    relations: [
+      { equip: 'LOAD-A', parent: 'CABLE-PANEL-1' },
+      { equip: 'CABLE-PANEL-1', parent: 'CABLE-PANEL-2' },
+      { equip: 'CABLE-PANEL-2', parent: 'EP-PARENT' },
+    ],
+    seeds: ['load-a'],
+    generated: ['cable-panel-1', 'cable-panel-2'],
+    epKids: ['CABLE-PANEL-2'],
+    panel2Kids: ['CABLE-PANEL-1'],
+    panel1Kids: ['LOAD-A'],
+    movedDependency: 'CABLE-PANEL-1',
+    movedKids: ['INSTRUMENT-A'],
+    repaired: [
+      { equip: 'ROOT', parent: '', dep: '', keepDuplicateDep: false },
+      { equip: 'EP-PARENT', parent: 'ROOT', dep: '', keepDuplicateDep: false },
+      { equip: 'CABLE-PANEL-2', parent: 'EP-PARENT', dep: 'EP-PARENT', keepDuplicateDep: true },
+      { equip: 'CABLE-PANEL-1', parent: 'CABLE-PANEL-2', dep: 'CABLE-PANEL-2', keepDuplicateDep: true },
+      { equip: 'LOAD-A', parent: 'CABLE-PANEL-1', dep: 'CABLE-PANEL-1', keepDuplicateDep: true },
+      { equip: 'LOAD-B', parent: 'SAME-PANEL', dep: 'SAME-PANEL', keepDuplicateDep: true },
+      { equip: 'LOAD-CYCLE', parent: 'OLD-CYCLE', dep: 'OLD-CYCLE', keepDuplicateDep: true },
+    ],
+  })
+})
+
 test('Equipment_List tabs auto-select and index MEL Equipment Tag and UPN values', () => {
   assert.match(html, /melSel:new Set\(\)/)
   assert.match(html, /melRows:\[\],melByTag:new Map\(\),melByNorm:new Map\(\),melXfmBySuffix:new Map\(\)/)
@@ -377,8 +446,8 @@ test('PMD rows are appended to SSM data with panels before instruments', () => {
   assert.match(html, /const panelRows=links\.map\(link=>\{const row=existingRows\.get\(link\.loadKey\);return row\?\[link\.loadName,\.\.\.row\.slice\(1\)\]:\[link\.loadName,'',depOf\(link\.loadName\)\|\|depOf\(link\.panel\)\|\|''\];\}\)/)
   assert.match(html, /const instrumentRows=links\.flatMap\(link=>link\.instruments\.map\(rec=>\[pmdExportTag\(rec\.tag,link\.building\),link\.loadName,''\]\)\)/)
   assert.match(html, /return \[\.\.\.base,\.\.\.panelRows,\.\.\.instrumentRows\]/)
-  assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(repairEasyPowerSsmRows\(repairMelSsmRows\(ssmCombined\)\),true\)\)/)
-  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(repairEasyPowerSsmRows\(repairMelSsmRows\(sh\.ssmRows\)\),false\)\)/)
+  assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(finalCombinedRows,true\)\)/)
+  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(sh\.ssmRows,false\)\)/)
 })
 
 test('PMD base panels link to both CPS and NPS load variants with duplicated instruments', () => {
@@ -747,8 +816,8 @@ test('SSM registers keep one normalized Equipment ID across hierarchy and PMD ro
   assert.match(html, /function uniqueSsmRows\(rows\)\{/)
   assert.match(html, /const seen=new Set\(\),out=\[\];/)
   assert.match(html, /const key=tagKey\(row&&row\[0\]\);if\(!key\|\|seen\.has\(key\)\)continue;seen\.add\(key\);out\.push\(row\)/)
-  assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(repairEasyPowerSsmRows\(repairMelSsmRows\(ssmCombined\)\),true\)\)/)
-  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(repairEasyPowerSsmRows\(repairMelSsmRows\(sh\.ssmRows\)\),false\)\)/)
+  assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(finalCombinedRows,true\)\)/)
+  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(sh\.ssmRows,false\)\)/)
   assert.match(html, /function filterSsm\(rows\)\{return uniqueSsmRows\(rows\)\.filter/)
   const value = runInNewContext(`${customScript}
     JSON.stringify(uniqueSsmRows([
