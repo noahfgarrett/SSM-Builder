@@ -129,7 +129,16 @@ test('changelog modal is available from update tabs and the version link', () =>
 })
 
 test('equipment tags consistently drop trailing -P and -S suffixes', () => {
-  assert.ok(html.includes("const cleanTag=v=>clean(v).replace(/(?:-(?:P|S))+$/i,'');"))
+  assert.match(html, /const cleanTag=v=>clean\(v\)\.normalize\('NFKC'\)/)
+  const value = runInNewContext(`${customScript}
+    JSON.stringify([
+      cleanTag('TAG-100-P'),
+      cleanTag('TAG-100-S'),
+      cleanTag('3F21\u2011LVSY373B'),
+      cleanTag('3F21-\u200BXFMY373B')
+    ]);
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), ['TAG-100', 'TAG-100', '3F21-LVSY373B', '3F21-XFMY373B'])
   assert.match(html, /function rowTag\(row,col,rec,rowIndex\)/)
   assert.match(html, /return col>=0\?cleanTag\(row\[col\]\):''/)
   assert.match(html, /const source=rowTag\(row,cols\.source,rec,rowIndex\)/)
@@ -195,11 +204,12 @@ test('Load Description relations use ID Name, Final Source, and self-match rules
 
 test('Equipment_List tabs auto-select and index MEL Equipment Tag and UPN values', () => {
   assert.match(html, /melSel:new Set\(\)/)
-  assert.match(html, /melRows:\[\],melByTag:new Map\(\)/)
+  assert.match(html, /melRows:\[\],melByTag:new Map\(\),melByNorm:new Map\(\),melXfmBySuffix:new Map\(\)/)
   assert.match(html, /const MEL_SHEET_NAME='equipmentlist'/)
   assert.match(html, /function isMelSheet\(key\)/)
   assert.match(html, /function detectMel\(headers\)/)
-  assert.match(html, /norm\.indexOf\('equipmenttag'\),upn=norm\.indexOf\('upn'\)/)
+  assert.match(html, /tag=norm\.findIndex\(h=>h==='equipmenttag'\|\|h\.endsWith\('equipmenttag'\)\)/)
+  assert.match(html, /return tag>=0\?\{tag,upn\}:null/)
   assert.match(html, /function melInfo\(key\)/)
   assert.match(html, /if\(isMelSheet\(k\)\)S\.melSel\.add\(k\)/)
   assert.match(html, /!isMelSheet\(key\)&&!isPmdSheet\(key\)&&!isCableSheet\(key\)/)
@@ -210,18 +220,22 @@ test('Equipment_List tabs auto-select and index MEL Equipment Tag and UPN values
   const value = runInNewContext(`${customScript}
     JSON.stringify([
       detectMel(['Description','Equipment Tag','UPN']),
+      detectMel(['Equipment Tag','UPN (Code)']),
+      detectMel(['Equipment Tag','Description']),
       detectMel(['Equipment','Unit Number']),
       isMelSheet('file\\u0001Equipment_List'),
       isMelSheet('file\\u0001Other')
     ]);
   `, { console, setTimeout, clearTimeout })
-  assert.deepEqual(JSON.parse(value), [{ tag: 1, upn: 2 }, null, true, false])
+  assert.deepEqual(JSON.parse(value), [{ tag: 1, upn: 2 }, { tag: 0, upn: 1 }, { tag: 0, upn: -1 }, null, true, false])
 })
 
-test('MEL corrects LV transformer parents only when the exact four-character candidate exists', () => {
+test('MEL corrects LV transformer parents only when a four-character transformer candidate exists', () => {
   assert.match(html, /function melRoleAfterFirstHyphen\(value,role\)/)
   assert.match(html, /function melCorrectClosestParent\(equipment,parent\)/)
-  assert.match(html, /const candidate=current\.slice\(0,-4\)\+equip\.slice\(-4\),match=melRecord\(candidate\)/)
+  assert.match(html, /function melMatchingTransformer\(equipment,current\)/)
+  assert.match(html, /const expected=parent\.slice\(0,-4\)\+equip\.slice\(-4\),exact=melRecord\(expected\)/)
+  assert.match(html, /const candidates=S\.melXfmBySuffix\.get\(suffix\)\|\|\[\]/)
   assert.match(html, /if\(equip\.slice\(-4\)\.toLowerCase\(\)===current\.slice\(-4\)\.toLowerCase\(\)\)return current/)
   assert.match(html, /function applyMelParentCorrections\(segs,loadDesc\)/)
   assert.match(html, /segs=applyMelParentCorrections\(gisBusCut\(segs\),loadDesc\)/)

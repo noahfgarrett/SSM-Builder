@@ -611,18 +611,25 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const raf=()=>new Promise(r=>requestAnimationFrame(()=>r()));
 function idleFrame(){return new Promise(r=>{if(window.requestIdleCallback)window.requestIdleCallback(()=>r(),{timeout:90});else setTimeout(()=>r(),24);});}
 const clean=v=>String(v==null?'':v).trim();
-const cleanTag=v=>clean(v).replace(/(?:-(?:P|S))+$/i,'');
+const cleanTag=v=>clean(v).normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/[\u2010-\u2015\u2212]/g,'-').replace(/\s*-\s*/g,'-').replace(/(?:-(?:P|S))+$/i,'');
 function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]||''}</svg>`;}
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.18';
+const APP_VERSION = '1.1.19';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.19',
+    date:'2026-07-21T15:01:29Z',
+    type:'fix',
+    stats:{fixes:1},
+    notes:`- Fixed MEL transformer matches failing when sheet headers or equipment tag separators used alternate formatting`
+  },
   {
     version:'1.1.18',
     date:'2026-07-21T14:52:11Z',
@@ -1098,7 +1105,7 @@ const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:n
   showSpares:true,showSpaces:true,showDeps:true,showPmdMatches:true,deps:new Map(),depDetail:new Map(),hasCable:false,
   cableStruckTags:new Set(),
   pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdSuffixMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
-  melRows:[],melByTag:new Map(),
+  melRows:[],melByTag:new Map(),melByNorm:new Map(),melXfmBySuffix:new Map(),
   epDetail:new Map(),epNameSet:new Set(),review:[],workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
   cmpFilter:'all',cmpSearch:'',cmpDiff:'all',cmpSort:null,revSearch:'',revSort:null,revMinPct:null,showStats:true,
   resultFullscreen:false,
@@ -1388,15 +1395,16 @@ function pmdPanelKey(value){return pmdPanelMatchParts(value).key;}
 /* ---- Master Equipment List (Equipment Tag -> UPN) ---- */
 const MEL_SHEET_NAME='equipmentlist';
 const _melCache=new Map();
-function isMelSheet(key){return normH(key.split(KEYSEP)[1])===MEL_SHEET_NAME;}
+function isMelSheet(key){const [fid,sheet]=key.split(KEYSEP);return normH(sheet)===MEL_SHEET_NAME||!!(fileById(fid)&&melInfo(key));}
 function detectMel(headers){
-  const norm=headers.map(normH),tag=norm.indexOf('equipmenttag'),upn=norm.indexOf('upn');
-  return tag>=0&&upn>=0?{tag,upn}:null;
+  const norm=headers.map(normH),tag=norm.findIndex(h=>h==='equipmenttag'||h.endsWith('equipmenttag'));
+  const upn=norm.findIndex(h=>h==='upn'||h.startsWith('upn'));
+  return tag>=0?{tag,upn}:null;
 }
 function melInfo(key){
   if(_melCache.has(key))return _melCache.get(key);
   const {aoa}=getAoa(key);let res=null;
-  for(let r=0;r<Math.min(aoa.length,60);r++){
+  for(let r=0;r<Math.min(aoa.length,200);r++){
     const map=detectMel((aoa[r]||[]).map(clean));
     if(map){res={map,headerRow:r};break;}
   }
@@ -1839,7 +1847,7 @@ function updateSelInfo(){
 
 /* ---- build ---- */
 async function buildMel(tick){
-  S.melRows=[];S.melByTag=new Map();
+  S.melRows=[];S.melByTag=new Map();S.melByNorm=new Map();S.melXfmBySuffix=new Map();
   for(const key of S.melSel){
     const [fid]=key.split(KEYSEP);if(!fileById(fid))continue;
     const mi=melInfo(key);if(!mi)continue;
@@ -1847,23 +1855,32 @@ async function buildMel(tick){
     for(let i=headerRow+1;i<aoa.length;i++){
       if(tick)await tick('Reading Master Equipment List');
       const tag=cleanTag(aoa[i][map.tag]);if(!tag)continue;
-      const upn=clean(aoa[i][map.upn]),keyTag=tagKey(tag),existing=S.melByTag.get(keyTag);
+      const upn=map.upn>=0?clean(aoa[i][map.upn]):'',keyTag=tagKey(tag),existing=S.melByTag.get(keyTag);
       if(existing){if(!existing.upn&&upn)existing.upn=upn;continue;}
       const rec={tag,upn};S.melRows.push(rec);S.melByTag.set(keyTag,rec);
+      const normKey=normSep(tag);if(normKey&&!S.melByNorm.has(normKey))S.melByNorm.set(normKey,rec);
+      if(melRoleAfterFirstHyphen(tag,'XFM')){const suffix=tag.slice(-4).toLowerCase(),list=S.melXfmBySuffix.get(suffix)||[];list.push(rec);S.melXfmBySuffix.set(suffix,list);}
     }
   }
 }
-function melRecord(value){return S.melByTag.get(tagKey(value))||null;}
+function melRecord(value){return S.melByTag.get(tagKey(value))||S.melByNorm.get(normSep(cleanTag(value)))||null;}
 function melUpn(value){const rec=melRecord(value);return rec?rec.upn:'';}
 function melRoleAfterFirstHyphen(value,role){
   const tag=cleanTag(value),dash=tag.indexOf('-');
   return dash>=0&&tag.slice(dash+1).toUpperCase().startsWith(role);
 }
+function melMatchingTransformer(equipment,current){
+  const equip=cleanTag(equipment),parent=cleanTag(current),suffix=equip.slice(-4).toLowerCase();
+  const expected=parent.slice(0,-4)+equip.slice(-4),exact=melRecord(expected);
+  if(exact&&melRoleAfterFirstHyphen(exact.tag,'XFM'))return exact;
+  const candidates=S.melXfmBySuffix.get(suffix)||[],stem=normSep(parent.slice(0,-4));
+  return candidates.find(rec=>normSep(rec.tag.slice(0,-4))===stem)||(candidates.length===1?candidates[0]:null);
+}
 function melCorrectClosestParent(equipment,parent){
   const equip=cleanTag(equipment),current=cleanTag(parent);
   if(equip.length<4||current.length<4||!melRoleAfterFirstHyphen(equip,'LV')||!melRoleAfterFirstHyphen(current,'XFM'))return current;
   if(equip.slice(-4).toLowerCase()===current.slice(-4).toLowerCase())return current;
-  const candidate=current.slice(0,-4)+equip.slice(-4),match=melRecord(candidate);
+  const match=melMatchingTransformer(equip,current);
   return match?match.tag:current;
 }
 function applyMelParentCorrections(segs,loadDesc){
