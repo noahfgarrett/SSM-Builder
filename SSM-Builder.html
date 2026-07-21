@@ -616,13 +616,20 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.17';
+const APP_VERSION = '1.1.18';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.18',
+    date:'2026-07-21T14:52:11Z',
+    type:'fix',
+    stats:{fixes:1},
+    notes:`- Fixed mismatched LVS branches with intermediate Downstream levels not receiving their matching MEL transformer`
+  },
   {
     version:'1.1.17',
     date:'2026-07-21T14:35:49Z',
@@ -1885,18 +1892,28 @@ function mergeRawHierarchyNode(target,source){
   }
   return target;
 }
+function melLvsDescendants(transformer){
+  const found=[];
+  const walk=holder=>{
+    for(const [key,node] of [...holder.kids.entries()]){
+      if(melRoleAfterFirstHyphen(node.name,'XFM'))continue;
+      if(melRoleAfterFirstHyphen(node.name,'LVS')){found.push({holder,key,node});continue;}
+      walk(node);
+    }
+  };
+  walk(transformer);return found;
+}
 function repairMelTransformerBranches(root){
   let moved=0;
   const visit=container=>{
     const transformers=[...container.kids.values()].filter(node=>melRoleAfterFirstHyphen(node.name,'XFM'));
     for(const transformer of transformers){
-      for(const [childKey,child] of [...transformer.kids.entries()]){
-        if(!melRoleAfterFirstHyphen(child.name,'LVS'))continue;
+      for(const {holder,key:childKey,node:child} of melLvsDescendants(transformer)){
         const corrected=melCorrectClosestParent(child.name,transformer.name);
         if(tagKey(corrected)===tagKey(transformer.name))continue;
         let targetEntry=rawKidEntry(container.kids,corrected),target=targetEntry&&targetEntry[1];
         if(!target){target={name:corrected,kids:new Map(),isId:false};container.kids.set(corrected,target);}
-        transformer.kids.delete(childKey);
+        holder.kids.delete(childKey);
         const existing=rawKidEntry(target.kids,child.name);
         if(existing)mergeRawHierarchyNode(existing[1],child);else target.kids.set(child.name,child);
         moved++;
@@ -1906,20 +1923,31 @@ function repairMelTransformerBranches(root){
   };
   visit(root);return moved;
 }
+function ssmAncestorByRole(row,byEquipment,role){
+  let name=cleanTag(row&&row[1]),seen=new Set();
+  while(name&&!seen.has(tagKey(name))){
+    const key=tagKey(name);seen.add(key);
+    if(melRoleAfterFirstHyphen(name,role))return name;
+    const parentRow=byEquipment.get(key);name=cleanTag(parentRow&&parentRow[1]);
+  }
+  return '';
+}
 function repairMelSsmRows(rows){
   if(!S.melByTag.size)return rows;
   const byEquipment=new Map();for(const row of rows){const key=tagKey(row&&row[0]);if(key&&!byEquipment.has(key))byEquipment.set(key,row);}
   const emitted=new Set(),out=[];
   for(const row of rows){
-    const equip=cleanTag(row&&row[0]),parent=cleanTag(row&&row[1]),corrected=melCorrectClosestParent(equip,parent);
-    if(corrected!==parent){
+    const equip=cleanTag(row&&row[0]),parent=cleanTag(row&&row[1]);
+    const transformer=melRoleAfterFirstHyphen(parent,'XFM')?parent:(melRoleAfterFirstHyphen(equip,'LVS')?ssmAncestorByRole(row,byEquipment,'XFM'):'');
+    const corrected=transformer?melCorrectClosestParent(equip,transformer):parent;
+    if(transformer&&tagKey(corrected)!==tagKey(transformer)){
       const correctedKey=tagKey(corrected);
       if(!emitted.has(correctedKey)){
-        const existing=byEquipment.get(correctedKey),sourceParent=byEquipment.get(tagKey(parent));
+        const existing=byEquipment.get(correctedKey),sourceParent=byEquipment.get(tagKey(transformer));
         out.push(existing?[...existing]:[corrected,sourceParent?cleanTag(sourceParent[1]):'']);emitted.add(correctedKey);
       }
       const fixed=[...row];fixed[1]=corrected;
-      if(fixed[2]!=null&&tagKey(fixed[2])===tagKey(parent))fixed[2]=corrected;
+      if(fixed[2]!=null&&(tagKey(fixed[2])===tagKey(parent)||tagKey(fixed[2])===tagKey(transformer)))fixed[2]=corrected;
       out.push(fixed);emitted.add(tagKey(equip));continue;
     }
     out.push(row);emitted.add(tagKey(equip));

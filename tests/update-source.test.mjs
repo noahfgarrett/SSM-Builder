@@ -255,11 +255,14 @@ test('MEL corrects LV transformer parents only when the exact four-character can
 })
 
 test('MEL inserts missing transformer levels and moves complete mismatched LVS branches', () => {
+  assert.match(html, /function melLvsDescendants\(transformer\)/)
+  assert.match(html, /if\(melRoleAfterFirstHyphen\(node\.name,'XFM'\)\)continue/)
+  assert.match(html, /if\(melRoleAfterFirstHyphen\(node\.name,'LVS'\)\)\{found\.push\(\{holder,key,node\}\);continue;\}/)
   assert.match(html, /function repairMelTransformerBranches\(root\)/)
   assert.match(html, /filter\(node=>melRoleAfterFirstHyphen\(node\.name,'XFM'\)\)/)
-  assert.match(html, /if\(!melRoleAfterFirstHyphen\(child\.name,'LVS'\)\)continue/)
-  assert.match(html, /transformer\.kids\.delete\(childKey\)/)
+  assert.match(html, /holder\.kids\.delete\(childKey\)/)
   assert.match(html, /target\.kids\.set\(child\.name,child\)/)
+  assert.match(html, /function ssmAncestorByRole\(row,byEquipment,role\)/)
   assert.match(html, /function repairMelSsmRows\(rows\)/)
   assert.match(html, /out\.push\(existing\?\[\.\.\.existing\]:\[corrected,sourceParent\?cleanTag\(sourceParent\[1\]\):''\]\)/)
   assert.match(html, /fixed\[1\]=corrected/)
@@ -271,7 +274,9 @@ test('MEL inserts missing transformer levels and moves complete mismatched LVS b
     const child={name:'3F21-MTRY900A',kids:new Map(),isId:true};
     const lvs372={name:'3F21-LVSY372B',kids:new Map(),isId:true};
     const lvs373={name:'3F21-LVSY373B',kids:new Map([[child.name,child]]),isId:true};
-    const xfm372={name:'3F21-XFMY372B',kids:new Map([[lvs372.name,lvs372],[lvs373.name,lvs373]]),isId:false};
+    const panel={name:'PANEL-A',kids:new Map([[lvs373.name,lvs373]]),isId:true};
+    const bus={name:'BUS-A',kids:new Map([[panel.name,panel]]),isId:true};
+    const xfm372={name:'3F21-XFMY372B',kids:new Map([[lvs372.name,lvs372],[bus.name,bus]]),isId:false};
     const root={name:'__root__',kids:new Map([[xfm372.name,xfm372]])};
     const moved=repairMelTransformerBranches(root);
     const xfm373=root.kids.get('3F21-XFMY373B');
@@ -279,13 +284,16 @@ test('MEL inserts missing transformer levels and moves complete mismatched LVS b
       ['ROOT',''],
       ['3F21-XFMY372B','ROOT'],
       ['3F21-LVSY372B','3F21-XFMY372B'],
-      ['3F21-LVSY373B','3F21-XFMY372B','3F21-XFMY372B',{keepDuplicateDep:true}],
+      ['BUS-A','3F21-XFMY372B'],
+      ['PANEL-A','BUS-A'],
+      ['3F21-LVSY373B','PANEL-A','PANEL-A',{keepDuplicateDep:true}],
       ['3F21-MTRY900A','3F21-LVSY373B']
     ]);
     JSON.stringify({
       moved,
       rootKids:[...root.kids.keys()],
       oldKids:[...xfm372.kids.keys()],
+      oldPanelKids:[...panel.kids.keys()],
       newKids:[...xfm373.kids.keys()],
       movedDescendants:[...xfm373.kids.get('3F21-LVSY373B').kids.keys()],
       repairedRows
@@ -294,13 +302,16 @@ test('MEL inserts missing transformer levels and moves complete mismatched LVS b
   assert.deepEqual(JSON.parse(value), {
     moved: 1,
     rootKids: ['3F21-XFMY372B', '3F21-XFMY373B'],
-    oldKids: ['3F21-LVSY372B'],
+    oldKids: ['3F21-LVSY372B', 'BUS-A'],
+    oldPanelKids: [],
     newKids: ['3F21-LVSY373B'],
     movedDescendants: ['3F21-MTRY900A'],
     repairedRows: [
       ['ROOT', ''],
       ['3F21-XFMY372B', 'ROOT'],
       ['3F21-LVSY372B', '3F21-XFMY372B'],
+      ['BUS-A', '3F21-XFMY372B'],
+      ['PANEL-A', 'BUS-A'],
       ['3F21-XFMY373B', 'ROOT'],
       ['3F21-LVSY373B', '3F21-XFMY373B', '3F21-XFMY373B', { keepDuplicateDep: true }],
       ['3F21-MTRY900A', '3F21-LVSY373B'],
