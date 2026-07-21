@@ -616,13 +616,20 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.16';
+const APP_VERSION = '1.1.17';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.17',
+    date:'2026-07-21T14:35:49Z',
+    type:'fix',
+    stats:{fixes:1},
+    notes:`- Fixed comparisons marking semicolon-separated working dependencies as different when one tag matches`
+  },
   {
     version:'1.1.16',
     date:'2026-07-21T14:13:31Z',
@@ -2160,12 +2167,16 @@ function workingRegisterCompareKey(value){return registerCompareKey(cleanTag(cle
 function registerDisplayValue(value){return registerCompareKey(value)===''?'N/A':clean(value);}
 function sameRegisterValue(a,b){return registerCompareKey(a)===registerCompareKey(b);}
 function sameWorkingRegisterValue(extracted,working){return registerCompareKey(extracted)===workingRegisterCompareKey(working);}
+function sameWorkingDependencyValue(extracted,working){
+  const parts=clean(working).split(';').map(clean).filter(Boolean);
+  return (parts.length?parts:[working]).some(value=>sameWorkingRegisterValue(extracted,value));
+}
 function isAcceptedMissingWorkingDependency(curParent,curDep,wcParent,wcDep){
-  return registerCompareKey(curParent)!==''&&sameWorkingRegisterValue(curParent,wcParent)&&!sameWorkingRegisterValue(curDep,wcDep)
+  return registerCompareKey(curParent)!==''&&sameWorkingRegisterValue(curParent,wcParent)&&!sameWorkingDependencyValue(curDep,wcDep)
     &&sameRegisterValue(curDep,curParent)&&sameWorkingRegisterValue(curDep,wcParent)&&workingRegisterCompareKey(wcDep)==='';
 }
 function comparisonValuesMatch(curParent,curDep,wcParent,wcDep){
-  return sameWorkingRegisterValue(curParent,wcParent)&&(sameWorkingRegisterValue(curDep,wcDep)||isAcceptedMissingWorkingDependency(curParent,curDep,wcParent,wcDep));
+  return sameWorkingRegisterValue(curParent,wcParent)&&(sameWorkingDependencyValue(curDep,wcDep)||isAcceptedMissingWorkingDependency(curParent,curDep,wcParent,wcDep));
 }
 function registerDepValue(parent,dep,keepDuplicate){
   const d=clean(dep);
@@ -2492,7 +2503,7 @@ function comparePanelCacheKey(){return comparePanelCacheKeyFor(S.cmpFilter,S.cmp
 function compareRowsCacheKey(filter,search,diff,sort){return ['compareRows',S.compare.length,filter,search,diff,compareSortKey(sort)].join(KEYSEP);}
 function compareDiffMatch(r,diff){
   if(diff==='all')return true;
-  const parent=!sameWorkingRegisterValue(r.curParent,r.wcParent),dep=!r.acceptedDepMismatch&&!sameWorkingRegisterValue(r.curDep,r.wcDep);
+  const parent=!sameWorkingRegisterValue(r.curParent,r.wcParent),dep=!r.acceptedDepMismatch&&!sameWorkingDependencyValue(r.curDep,r.wcDep);
   return diff==='parent'?parent:diff==='dep'?dep:parent&&dep;
 }
 function sortCompareList(rows,sort){
@@ -2518,7 +2529,7 @@ function compareRows(){return compareRowsFor(S.cmpFilter,S.cmpSearch,S.cmpDiff,S
 function compareMakeCell(a,b,accepted){const diff=!accepted&&!sameWorkingRegisterValue(a,b);return `<td class="mono ${diff?'diff':''}">${esc(registerDisplayValue(a))}</td><td class="mono ${diff?'diff':''}">${esc(registerDisplayValue(b))}</td>`;}
 function compareMakeRow(r){
   const sub=r.status==='nohit'?`<span class="subtle">${r.inCur?'only in extracted':'only in working copy'}</span>`:'';
-  return `<tr class="r-${r.status}"><td class="mono">${esc(r.equip)}</td><td><span class="cbadge ${r.status}">${ic(CMP_ICON[r.status])}${CMP_LABEL[r.status]}</span>${sub}</td>${compareMakeCell(r.curParent,r.wcParent)}${compareMakeCell(r.curDep,r.wcDep,r.acceptedDepMismatch)}</tr>`;
+  return `<tr class="r-${r.status}"><td class="mono">${esc(r.equip)}</td><td><span class="cbadge ${r.status}">${ic(CMP_ICON[r.status])}${CMP_LABEL[r.status]}</span>${sub}</td>${compareMakeCell(r.curParent,r.wcParent)}${compareMakeCell(r.curDep,r.wcDep,r.acceptedDepMismatch||sameWorkingDependencyValue(r.curDep,r.wcDep))}</tr>`;
 }
 function getCompareRowsCache(filter,search,diff,sort){
   const key=compareRowsCacheKey(filter,search,diff,sort),hit=cacheGet(S.viewCache.compareRows,key);
@@ -2940,7 +2951,7 @@ function addCompareSheet(wb,used){
     const st=ws[XLSX.utils.encode_cell({r:R,c:1})];if(st&&CMP_STYLE[st.v])st.s=CMP_STYLE[st.v];
     if(r.status==='off'){                                    // highlight the values that differ
       if(!sameWorkingRegisterValue(r.curParent,r.wcParent)){for(const C of[2,3]){const c=ws[XLSX.utils.encode_cell({r:R,c:C})];if(c)c.s=XL_DIFF;}}
-      if(!sameWorkingRegisterValue(r.curDep,r.wcDep)){for(const C of[4,5]){const c=ws[XLSX.utils.encode_cell({r:R,c:C})];if(c)c.s=XL_DIFF;}}
+      if(!sameWorkingDependencyValue(r.curDep,r.wcDep)){for(const C of[4,5]){const c=ws[XLSX.utils.encode_cell({r:R,c:C})];if(c)c.s=XL_DIFF;}}
     }
   });
   styleHeaderRow(ws,0);setFilter(ws,0);

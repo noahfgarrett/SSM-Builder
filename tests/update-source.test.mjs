@@ -591,11 +591,11 @@ test('comparison accepts a missing working dependency when extracted parent and 
   assert.match(html, /function comparisonValuesMatch\(curParent,curDep,wcParent,wcDep\)/)
   assert.match(html, /status=comparisonValuesMatch\(curParent,curDep,wcParent,wcDep\)\?'match':'off'/)
   assert.match(html, /acceptedDepMismatch=!!\(a&&b&&isAcceptedMissingWorkingDependency/)
-  assert.match(html, /dep=!r\.acceptedDepMismatch&&!sameWorkingRegisterValue\(r\.curDep,r\.wcDep\)/)
+  assert.match(html, /dep=!r\.acceptedDepMismatch&&!sameWorkingDependencyValue\(r\.curDep,r\.wcDep\)/)
   assert.equal((html.match(/const \{equip,parent,dep\}=ssmRegisterResolve\(r\)/g) || []).length, 2)
   assert.match(html, /function registerDisplayValue\(value\)/)
   assert.match(html, /compareMakeCell\(a,b,accepted\).*registerDisplayValue\(a\).*registerDisplayValue\(b\)/)
-  assert.match(html, /compareMakeCell\(r\.curDep,r\.wcDep,r\.acceptedDepMismatch\)/)
+  assert.match(html, /compareMakeCell\(r\.curDep,r\.wcDep,r\.acceptedDepMismatch\|\|sameWorkingDependencyValue\(r\.curDep,r\.wcDep\)\)/)
   const value = runInNewContext(`${customScript}
     JSON.stringify([
       comparisonValuesMatch('ID-100','ID-100','ID-100','N/A'),
@@ -606,6 +606,26 @@ test('comparison accepts a missing working dependency when extracted parent and 
     ]);
   `, { console, setTimeout, clearTimeout })
   assert.deepEqual(JSON.parse(value), [true, false, false, false, true])
+})
+
+test('comparison accepts a matching tag within semicolon-separated working dependencies', () => {
+  assert.match(html, /function sameWorkingDependencyValue\(extracted,working\)/)
+  assert.match(html, /clean\(working\)\.split\(';'\)\.map\(clean\)\.filter\(Boolean\)/)
+  assert.match(html, /sameWorkingDependencyValue\(curDep,wcDep\)\|\|isAcceptedMissingWorkingDependency/)
+  assert.match(html, /compareMakeCell\(r\.curDep,r\.wcDep,r\.acceptedDepMismatch\|\|sameWorkingDependencyValue\(r\.curDep,r\.wcDep\)\)/)
+  assert.match(html, /if\(!sameWorkingDependencyValue\(r\.curDep,r\.wcDep\)\)/)
+  const value = runInNewContext(`${customScript}
+    JSON.stringify([
+      sameWorkingDependencyValue('TAG-A','TAG-A; TAG-B'),
+      sameWorkingDependencyValue('TAG-B','TAG-A ; TAG-B [Existing]'),
+      sameWorkingDependencyValue('TAG-C','TAG-A; TAG-B'),
+      sameWorkingDependencyValue('TAG-A','TAG-A'),
+      comparisonValuesMatch('PARENT','TAG-A','PARENT','TAG-B; TAG-A'),
+      comparisonValuesMatch('PARENT','TAG-A','PARENT','TAG-B; TAG-C'),
+      comparisonValuesMatch('PARENT','TAG-A','OTHER','TAG-B; TAG-A')
+    ]);
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), [true, true, false, true, true, false, false])
 })
 
 test('comparison accepts trailing bracketed qualifiers only on working-copy tags', () => {
