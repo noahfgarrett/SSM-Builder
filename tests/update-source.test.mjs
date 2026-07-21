@@ -135,15 +135,17 @@ test('equipment tags consistently drop trailing -P and -S suffixes', () => {
       cleanTag('TAG-100-P'),
       cleanTag('TAG-100-S'),
       cleanTag('3F21\u2011LVSY373B'),
-      cleanTag('3F21-\u200BXFMY373B')
+      cleanTag('3F21-\u200BXFMY373B'),
+      cleanRegisterTag('PDU-MCC-CIM'),
+      cleanRegisterTag('EF25 (G22.5) - CIM')
     ]);
   `, { console, setTimeout, clearTimeout })
-  assert.deepEqual(JSON.parse(value), ['TAG-100', 'TAG-100', '3F21-LVSY373B', '3F21-XFMY373B'])
+  assert.deepEqual(JSON.parse(value), ['TAG-100', 'TAG-100', '3F21-LVSY373B', '3F21-XFMY373B', 'PDU-MCC-CIM', 'EF25 (G22.5) - CIM'])
   assert.match(html, /function rowTag\(row,col,rec,rowIndex\)/)
   assert.match(html, /return col>=0\?cleanTag\(row\[col\]\):''/)
   assert.match(html, /const source=rowTag\(row,cols\.source,rec,rowIndex\)/)
   assert.match(html, /const loadDesc=rowTag\(row,cols\.loadDesc,rec,rowIndex\)/)
-  assert.match(html, /rows\.push\(\{equip:cleanTag\(aoa\[i\]\[cols\.equip\]\)/)
+  assert.match(html, /rows\.push\(\{equip:cleanRegisterTag\(aoa\[i\]\[cols\.equip\]\)/)
 })
 
 test('imported strike formatting is shown only as Cable Schedule sidebar metadata', () => {
@@ -209,17 +211,17 @@ test('Equipment_List tabs auto-select and index MEL Equipment Tag and UPN values
   assert.match(html, /function isMelSheet\(key\)/)
   assert.match(html, /function detectMel\(headers\)/)
   assert.match(html, /tag=norm\.findIndex\(h=>h==='equipmenttag'\|\|h\.endsWith\('equipmenttag'\)\)/)
-  assert.match(html, /return tag>=0\?\{tag,upn\}:null/)
+  assert.match(html, /return tag>=0\?\{tag,upn,building\}:null/)
   assert.match(html, /function melInfo\(key\)/)
   assert.match(html, /if\(isMelSheet\(k\)\)S\.melSel\.add\(k\)/)
   assert.match(html, /!isMelSheet\(key\)&&!isPmdSheet\(key\)&&!isCableSheet\(key\)/)
   assert.match(html, /data-mel="\$\{esc\(key\)\}"/)
   assert.match(html, /Equipment Tag → UPN/)
   assert.match(html, /function buildMel\(tick\)/)
-  assert.match(html, /const rec=\{tag,upn\};S\.melRows\.push\(rec\);S\.melByTag\.set\(keyTag,rec\)/)
+  assert.match(html, /const rec=\{tag,upn,building\};S\.melRows\.push\(rec\);S\.melByTag\.set\(keyTag,rec\)/)
   const value = runInNewContext(`${customScript}
     JSON.stringify([
-      detectMel(['Description','Equipment Tag','UPN']),
+      detectMel(['Description','Equipment Tag','UPN','Bldg']),
       detectMel(['Equipment Tag','UPN (Code)']),
       detectMel(['Equipment Tag','Description']),
       detectMel(['Equipment','Unit Number']),
@@ -227,7 +229,7 @@ test('Equipment_List tabs auto-select and index MEL Equipment Tag and UPN values
       isMelSheet('file\\u0001Other')
     ]);
   `, { console, setTimeout, clearTimeout })
-  assert.deepEqual(JSON.parse(value), [{ tag: 1, upn: 2 }, { tag: 0, upn: 1 }, { tag: 0, upn: -1 }, null, true, false])
+  assert.deepEqual(JSON.parse(value), [{ tag: 1, upn: 2, building: 3 }, { tag: 0, upn: 1, building: -1 }, { tag: 0, upn: -1, building: -1 }, null, true, false])
 })
 
 test('MEL corrects LV transformer parents only when a four-character transformer candidate exists', () => {
@@ -375,8 +377,8 @@ test('PMD rows are appended to SSM data with panels before instruments', () => {
   assert.match(html, /const panelRows=links\.map\(link=>\{const row=existingRows\.get\(link\.loadKey\);return row\?\[link\.loadName,\.\.\.row\.slice\(1\)\]:\[link\.loadName,'',depOf\(link\.loadName\)\|\|depOf\(link\.panel\)\|\|''\];\}\)/)
   assert.match(html, /const instrumentRows=links\.flatMap\(link=>link\.instruments\.map\(rec=>\[pmdExportTag\(rec\.tag,link\.building\),link\.loadName,''\]\)\)/)
   assert.match(html, /return \[\.\.\.base,\.\.\.panelRows,\.\.\.instrumentRows\]/)
-  assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(repairMelSsmRows\(ssmCombined\),true\)\)/)
-  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(repairMelSsmRows\(sh\.ssmRows\),false\)\)/)
+  assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(repairEasyPowerSsmRows\(repairMelSsmRows\(ssmCombined\)\),true\)\)/)
+  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(repairEasyPowerSsmRows\(repairMelSsmRows\(sh\.ssmRows\)\),false\)\)/)
 })
 
 test('PMD base panels link to both CPS and NPS load variants with duplicated instruments', () => {
@@ -674,12 +676,79 @@ test('comparison accepts trailing bracketed qualifiers only on working-copy tags
   assert.deepEqual(JSON.parse(value), [true, true, true, true, false, false, ''])
 })
 
+test('SCR, SCC, CIM, and GIS parent overrides preserve extracted dependencies', () => {
+  assert.match(html, /function melScrSccParent\(equipment\)/)
+  assert.match(html, /for\(const role of \['SCR','SCC'\]\)/)
+  assert.match(html, /const unit=clean\(fragment\.split\('_'\)\[0\]\)/)
+  assert.match(html, /function melCimParent\(equipment\)/)
+  assert.match(html, /return building\?building\+' - CIM':''/)
+  assert.match(html, /function cleanRegisterTag\(value\)/)
+  assert.match(html, /const GIS_PARENT='602 Medium Voltage'/)
+  assert.match(html, /function repairEasyPowerHierarchyParents\(root\)/)
+  assert.match(html, /function repairEasyPowerSsmRows\(rows\)/)
+  assert.match(html, /const fixed=\[\.\.\.row\];fixed\[1\]=parentName;out\.push\(fixed\)/)
+  const value = runInNewContext(`${customScript}
+    S.melRows=[
+      {tag:'F15-PDU-SCR-239JEF_D-7',upn:'101',building:'F15'},
+      {tag:'G20-PDU-SCC-88A_X-1',upn:'102',building:'G20'},
+      {tag:'MEL-PREFIX-PDU-MCC-CIM-101',upn:'103',building:'EF25 (G22.5)'}
+    ];
+    const leaf={name:'LOAD-A',kids:new Map(),isId:true};
+    const scr={name:'PDU-SCR-239JEF_D-7_CPS',kids:new Map([[leaf.name,leaf]]),isId:true};
+    const scc={name:'PDU-SCC-88A_X-1_NPS',kids:new Map(),isId:true};
+    const cim={name:'PDU-MCC-CIM-101',kids:new Map(),isId:true};
+    const old={name:'OLD-PARENT',kids:new Map([[scr.name,scr],[scc.name,scc],[cim.name,cim]]),isId:true};
+    const gis={name:'GIS-SOURCE-1',kids:new Map(),isId:false};
+    const root={name:'__root__',kids:new Map([[old.name,old],[gis.name,gis]])};
+    repairEasyPowerHierarchyParents(root);
+    const repairedRows=repairEasyPowerSsmRows([
+      ['ROOT',''],
+      ['OLD-PARENT','ROOT'],
+      ['PDU-SCR-239JEF_D-7_CPS','OLD-PARENT','SCR-DEPENDENCY'],
+      ['PDU-SCC-88A_X-1_NPS','OLD-PARENT','SCC-DEPENDENCY'],
+      ['PDU-MCC-CIM-101','OLD-PARENT','CIM-DEPENDENCY'],
+      ['GIS-SOURCE-1','','GIS-DEPENDENCY']
+    ]);
+    const childNames=name=>[...(root.kids.get('OLD-PARENT').kids.get(name)?.kids.keys()||[])];
+    JSON.stringify({
+      oldKids:[...old.kids.keys()],
+      scrKids:childNames('F15-SCR-239JEF'),
+      gisKids:[...root.kids.get(GIS_PARENT).kids.keys()],
+      repairedRows,
+      resolvedCim:ssmResolve(repairedRows.find(row=>row[0]==='PDU-MCC-CIM-101'))
+    });
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), {
+    oldKids: ['F15-SCR-239JEF', 'G20-SCC-88A', 'EF25 (G22.5) - CIM'],
+    scrKids: ['PDU-SCR-239JEF_D-7_CPS'],
+    gisKids: ['GIS-SOURCE-1'],
+    repairedRows: [
+      ['ROOT', ''],
+      ['OLD-PARENT', 'ROOT'],
+      ['F15-SCR-239JEF', 'OLD-PARENT'],
+      ['PDU-SCR-239JEF_D-7_CPS', 'F15-SCR-239JEF', 'SCR-DEPENDENCY'],
+      ['G20-SCC-88A', 'OLD-PARENT'],
+      ['PDU-SCC-88A_X-1_NPS', 'G20-SCC-88A', 'SCC-DEPENDENCY'],
+      ['EF25 (G22.5) - CIM', 'OLD-PARENT'],
+      ['PDU-MCC-CIM-101', 'EF25 (G22.5) - CIM', 'CIM-DEPENDENCY'],
+      ['602 Medium Voltage', ''],
+      ['GIS-SOURCE-1', '602 Medium Voltage', 'GIS-DEPENDENCY'],
+    ],
+    resolvedCim: {
+      equip: 'PDU-MCC-CIM-101',
+      parent: 'EF25 (G22.5) - CIM',
+      dep: 'CIM-DEPENDENCY',
+      keepDuplicateDep: false,
+    },
+  })
+})
+
 test('SSM registers keep one normalized Equipment ID across hierarchy and PMD rows', () => {
   assert.match(html, /function uniqueSsmRows\(rows\)\{/)
   assert.match(html, /const seen=new Set\(\),out=\[\];/)
   assert.match(html, /const key=tagKey\(row&&row\[0\]\);if\(!key\|\|seen\.has\(key\)\)continue;seen\.add\(key\);out\.push\(row\)/)
-  assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(repairMelSsmRows\(ssmCombined\),true\)\)/)
-  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(repairMelSsmRows\(sh\.ssmRows\),false\)\)/)
+  assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(repairEasyPowerSsmRows\(repairMelSsmRows\(ssmCombined\)\),true\)\)/)
+  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(repairEasyPowerSsmRows\(repairMelSsmRows\(sh\.ssmRows\)\),false\)\)/)
   assert.match(html, /function filterSsm\(rows\)\{return uniqueSsmRows\(rows\)\.filter/)
   const value = runInNewContext(`${customScript}
     JSON.stringify(uniqueSsmRows([

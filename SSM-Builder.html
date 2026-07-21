@@ -612,17 +612,30 @@ const raf=()=>new Promise(r=>requestAnimationFrame(()=>r()));
 function idleFrame(){return new Promise(r=>{if(window.requestIdleCallback)window.requestIdleCallback(()=>r(),{timeout:90});else setTimeout(()=>r(),24);});}
 const clean=v=>String(v==null?'':v).trim();
 const cleanTag=v=>clean(v).normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/[\u2010-\u2015\u2212]/g,'-').replace(/\s*-\s*/g,'-').replace(/(?:-(?:P|S))+$/i,'');
+function cleanRegisterTag(value){
+  const raw=clean(value),cim=raw.match(/^(.*?)\s+-\s+CIM$/i);
+  return cim?cleanTag(cim[1])+' - CIM':cleanTag(raw);
+}
 function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]||''}</svg>`;}
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.19';
+const APP_VERSION = '1.1.20';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.20',
+    date:'2026-07-21T19:17:53Z',
+    type:'feature',
+    stats:{features:3},
+    notes:`- Added MEL-derived closest parents for SCR and SCC equipment
+- Added building-based closest parents for CIM equipment
+- Added 602 Medium Voltage as the hierarchy parent for GIS starting sources`
+  },
   {
     version:'1.1.19',
     date:'2026-07-21T15:01:29Z',
@@ -1399,7 +1412,8 @@ function isMelSheet(key){const [fid,sheet]=key.split(KEYSEP);return normH(sheet)
 function detectMel(headers){
   const norm=headers.map(normH),tag=norm.findIndex(h=>h==='equipmenttag'||h.endsWith('equipmenttag'));
   const upn=norm.findIndex(h=>h==='upn'||h.startsWith('upn'));
-  return tag>=0?{tag,upn}:null;
+  const building=norm.findIndex(h=>h==='bldg'||h==='building'||h.startsWith('building'));
+  return tag>=0?{tag,upn,building}:null;
 }
 function melInfo(key){
   if(_melCache.has(key))return _melCache.get(key);
@@ -1430,7 +1444,7 @@ function parseWorkCopy(){
       const rows=[];
       for(let i=r+1;i<aoa.length;i++){
         const equip=cleanTag(aoa[i][cols.equip]);if(!equip)continue;
-        rows.push({equip:cleanTag(aoa[i][cols.equip]),parent:cols.parent>=0?cleanTag(aoa[i][cols.parent]):'',dep:cols.dep>=0?cleanTag(aoa[i][cols.dep]):''});
+        rows.push({equip:cleanRegisterTag(aoa[i][cols.equip]),parent:cols.parent>=0?cleanRegisterTag(aoa[i][cols.parent]):'',dep:cols.dep>=0?cleanRegisterTag(aoa[i][cols.dep]):''});
       }
       if(rows.length){S.wcRows=rows;return;}
     }
@@ -1855,9 +1869,9 @@ async function buildMel(tick){
     for(let i=headerRow+1;i<aoa.length;i++){
       if(tick)await tick('Reading Master Equipment List');
       const tag=cleanTag(aoa[i][map.tag]);if(!tag)continue;
-      const upn=map.upn>=0?clean(aoa[i][map.upn]):'',keyTag=tagKey(tag),existing=S.melByTag.get(keyTag);
-      if(existing){if(!existing.upn&&upn)existing.upn=upn;continue;}
-      const rec={tag,upn};S.melRows.push(rec);S.melByTag.set(keyTag,rec);
+      const upn=map.upn>=0?clean(aoa[i][map.upn]):'',building=map.building>=0?clean(aoa[i][map.building]):'',keyTag=tagKey(tag),existing=S.melByTag.get(keyTag);
+      if(existing){if(!existing.upn&&upn)existing.upn=upn;if(!existing.building&&building)existing.building=building;continue;}
+      const rec={tag,upn,building};S.melRows.push(rec);S.melByTag.set(keyTag,rec);
       const normKey=normSep(tag);if(normKey&&!S.melByNorm.has(normKey))S.melByNorm.set(normKey,rec);
       if(melRoleAfterFirstHyphen(tag,'XFM')){const suffix=tag.slice(-4).toLowerCase(),list=S.melXfmBySuffix.get(suffix)||[];list.push(rec);S.melXfmBySuffix.set(suffix,list);}
     }
@@ -1876,6 +1890,33 @@ function melMatchingTransformer(equipment,current){
   const candidates=S.melXfmBySuffix.get(suffix)||[],stem=normSep(parent.slice(0,-4));
   return candidates.find(rec=>normSep(rec.tag.slice(0,-4))===stem)||(candidates.length===1?candidates[0]:null);
 }
+function stripPowerVariant(value){return cleanTag(value).replace(/[_-](?:NPS|CPS)$/i,'');}
+function melContainingRecord(value){
+  const key=normSep(stripPowerVariant(value));if(!key)return null;
+  let contained=null;
+  for(const rec of S.melRows){
+    const recKey=normSep(rec.tag);
+    if(recKey===key||recKey.endsWith(key))return rec;
+    if(!contained&&recKey.includes(key))contained=rec;
+  }
+  return contained;
+}
+function melScrSccParent(equipment){
+  const tag=stripPowerVariant(equipment),upper=tag.toUpperCase();
+  for(const role of ['SCR','SCC']){
+    const at=upper.indexOf(role+'-');if(at<0)continue;
+    const fragment=tag.slice(at),match=melContainingRecord(fragment);if(!match)return '';
+    const dash=match.tag.indexOf('-'),building=dash>0?clean(match.tag.slice(0,dash)):'';
+    const unit=clean(fragment.split('_')[0]);return building&&unit?building+'-'+unit:'';
+  }
+  return '';
+}
+function melCimParent(equipment){
+  const tag=stripPowerVariant(equipment);if(!/-CIM/i.test(tag))return '';
+  const match=melRecord(tag)||melContainingRecord(tag),building=match&&clean(match.building);
+  return building?building+' - CIM':'';
+}
+function melSyntheticParent(equipment){return melScrSccParent(equipment)||melCimParent(equipment);}
 function melCorrectClosestParent(equipment,parent){
   const equip=cleanTag(equipment),current=cleanTag(parent);
   if(equip.length<4||current.length<4||!melRoleAfterFirstHyphen(equip,'LV')||!melRoleAfterFirstHyphen(current,'XFM'))return current;
@@ -1908,6 +1949,33 @@ function mergeRawHierarchyNode(target,source){
     if(existing)mergeRawHierarchyNode(existing[1],child);else target.kids.set(child.name,child);
   }
   return target;
+}
+const GIS_PARENT='602 Medium Voltage';
+function repairEasyPowerHierarchyParents(root){
+  let moved=0;
+  const walk=holder=>{
+    for(const [key,node] of [...holder.kids.entries()]){
+      const parentName=melSyntheticParent(node.name);
+      if(!parentName||tagKey(parentName)===tagKey(node.name)||tagKey(parentName)===tagKey(holder.name)){walk(node);continue;}
+      let parentEntry=rawKidEntry(holder.kids,parentName),target=parentEntry&&parentEntry[1];
+      if(!target){target={name:parentName,kids:new Map(),isId:false};holder.kids.set(parentName,target);}
+      holder.kids.delete(key);
+      const existing=rawKidEntry(target.kids,node.name),movedNode=existing?mergeRawHierarchyNode(existing[1],node):node;
+      if(!existing)target.kids.set(node.name,node);
+      moved++;walk(movedNode);
+    }
+  };
+  walk(root);
+  const gisRoots=[...root.kids.entries()].filter(([,node])=>/GIS/i.test(node.name));
+  if(gisRoots.length){
+    let parentEntry=rawKidEntry(root.kids,GIS_PARENT),target=parentEntry&&parentEntry[1];
+    if(!target){target={name:GIS_PARENT,kids:new Map(),isId:false};root.kids.set(GIS_PARENT,target);}
+    for(const [key,node] of gisRoots){
+      root.kids.delete(key);const existing=rawKidEntry(target.kids,node.name);
+      if(existing)mergeRawHierarchyNode(existing[1],node);else target.kids.set(node.name,node);moved++;
+    }
+  }
+  return moved;
 }
 function melLvsDescendants(transformer){
   const found=[];
@@ -1966,6 +2034,21 @@ function repairMelSsmRows(rows){
       const fixed=[...row];fixed[1]=corrected;
       if(fixed[2]!=null&&(tagKey(fixed[2])===tagKey(parent)||tagKey(fixed[2])===tagKey(transformer)))fixed[2]=corrected;
       out.push(fixed);emitted.add(tagKey(equip));continue;
+    }
+    out.push(row);emitted.add(tagKey(equip));
+  }
+  return out;
+}
+function repairEasyPowerSsmRows(rows){
+  const byEquipment=new Map();for(const row of rows){const key=tagKey(row&&row[0]);if(key&&!byEquipment.has(key))byEquipment.set(key,row);}
+  const emitted=new Set(),out=[];
+  for(const row of rows){
+    const equip=cleanTag(row&&row[0]),parent=cleanTag(row&&row[1]);
+    const parentName=melSyntheticParent(equip)||(!parent&&/GIS/i.test(equip)?GIS_PARENT:'');
+    if(parentName&&tagKey(parentName)!==tagKey(equip)&&tagKey(parentName)!==tagKey(parent)){
+      const parentKey=tagKey(parentName);
+      if(!emitted.has(parentKey)){const existing=byEquipment.get(parentKey);out.push(existing?[...existing]:[parentName,parent]);emitted.add(parentKey);}
+      const fixed=[...row];fixed[1]=parentName;out.push(fixed);emitted.add(tagKey(equip));continue;
     }
     out.push(row);emitted.add(tagKey(equip));
   }
@@ -2151,11 +2234,13 @@ async function buildHierarchy(){
     }
     report(.79,'Repairing MEL transformer branches');await raf();
     repairMelTransformerBranches(combined);for(const sh of sheets)repairMelTransformerBranches(sh._sMap);
+    report(.795,'Applying MEL parent rules');await raf();
+    repairEasyPowerHierarchyParents(combined);for(const sh of sheets)repairEasyPowerHierarchyParents(sh._sMap);
     report(.80,'Linking PMD instruments');await raf();
     const instrumentCount=attachPmdInstruments(combined);
     for(const sh of sheets)_attachPmdInstruments(sh._sMap,null);
-    S.sheets=sheets;S.ssmCombined=uniqueSsmRows(appendPmdSsmRows(repairMelSsmRows(ssmCombined),true));
-    for(const sh of S.sheets)sh.ssmRows=uniqueSsmRows(appendPmdSsmRows(repairMelSsmRows(sh.ssmRows),false));
+    S.sheets=sheets;S.ssmCombined=uniqueSsmRows(appendPmdSsmRows(repairEasyPowerSsmRows(repairMelSsmRows(ssmCombined)),true));
+    for(const sh of S.sheets)sh.ssmRows=uniqueSsmRows(appendPmdSsmRows(repairEasyPowerSsmRows(repairMelSsmRows(sh.ssmRows)),false));
     report(.82,'Finalizing tree');await raf();
     S.roots=finalize(combined); // call last so nodeById matches the displayed combined tree
     // every equipment name in the Easy Power hierarchy (for cable cross-check)
@@ -2204,10 +2289,10 @@ async function buildReview(report){
 }
 /* Resolve a stored SSM row [equip, parent, depOverride, metadata] to display values. */
 function ssmResolve(r){
-  const e=cleanTag(r[0]),par=cleanTag(r[1]||''),dep=r[2]!=null?cleanTag(r[2]):(depOf(e)||''),meta=r[3]||{};
+  const e=cleanRegisterTag(r[0]),par=cleanRegisterTag(r[1]||''),dep=r[2]!=null?cleanRegisterTag(r[2]):(depOf(e)||''),meta=r[3]||{};
   return {equip:e,parent:par,dep,keepDuplicateDep:!!meta.keepDuplicateDep};
 }
-function registerCompareKey(value){const v=clean(value).toLowerCase();return (!v||v==='n/a'||v==='-'||v==='—')?'':v;}
+function registerCompareKey(value){const v=cleanTag(value).toLowerCase();return (!v||v==='n/a'||v==='-'||v==='—')?'':v;}
 function workingRegisterCompareKey(value){return registerCompareKey(cleanTag(clean(value).replace(/(?:\s*\[[^\]]*\])+\s*$/,'')));}
 function registerDisplayValue(value){return registerCompareKey(value)===''?'N/A':clean(value);}
 function sameRegisterValue(a,b){return registerCompareKey(a)===registerCompareKey(b);}
