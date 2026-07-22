@@ -197,6 +197,10 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .rowinfo .ic{width:14px;height:14px}
 .row:hover .rowinfo,.row:focus-within .rowinfo,.rowinfo:focus-visible{opacity:1}
 .rowinfo:hover{border-color:var(--accent-400);color:var(--accent-700);background:var(--tint)}
+.placement-flag{align-self:center;display:inline-grid;place-items:center;width:25px;height:25px;margin-left:6px;border:1px solid #e7b46b;border-radius:7px;background:#fff7e8;color:#a85a13;cursor:pointer;box-shadow:0 0 0 0 rgba(234,88,12,.22);animation:placementPulse 2.2s ease-in-out infinite}
+.placement-flag .ic{width:14px;height:14px}
+.placement-flag:hover,.placement-flag:focus-visible{outline:none;background:#ffedd5;border-color:var(--accent-400);box-shadow:var(--ring)}
+@keyframes placementPulse{50%{box-shadow:0 0 0 4px rgba(234,88,12,.10)}}
 .hide-deps .dep:not(.pmd-link){display:none}
 .hide-pmd .pmd-link{display:none}
 .row.is-spare .lbl,.row.is-space .lbl{color:var(--ink-3);font-style:italic}
@@ -459,6 +463,35 @@ body.result-fullscreen{overflow:hidden}
 .warn-t{color:var(--accent-700)}
 .chip.sm{padding:5px 11px;font-size:12.5px}
 
+/* review modes and branch placement */
+.review-modes{display:inline-flex;gap:3px;padding:3px;margin-bottom:14px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)}
+.review-mode{display:inline-flex;align-items:center;gap:7px;min-height:34px;padding:0 11px;border:0;border-radius:6px;background:transparent;color:var(--ink-2);font-size:12.5px;font-weight:650;cursor:pointer}
+.review-mode .ic{width:14px;height:14px}
+.review-mode.on{background:var(--surface);color:var(--accent-700);box-shadow:var(--shadow-sm)}
+.review-mode-count{font:700 10.5px var(--mono);color:var(--ink-3)}
+.placement-list{display:flex;flex-direction:column;gap:8px}
+.placement-item{width:100%;display:grid;grid-template-columns:minmax(190px,1fr) minmax(230px,1.3fr) auto;align-items:center;gap:14px;padding:12px 14px;text-align:left;border:1px solid var(--border);border-left:3px solid #d9902f;border-radius:8px;background:var(--surface);color:var(--ink);cursor:pointer;box-shadow:var(--shadow-sm)}
+.placement-item:hover,.placement-item:focus-visible{outline:none;border-color:#e7b46b;background:#fffaf2}
+.placement-name{font:680 13px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.placement-meta{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+.placement-reason{font-size:12.5px;color:var(--ink-2);line-height:1.4}
+.placement-path{display:block;margin-top:3px;font:11px var(--mono);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.placement-state{display:inline-flex;align-items:center;gap:5px;font:700 10.5px var(--mono);text-transform:uppercase;color:#9a5b11;white-space:nowrap}
+.placement-state .ic{width:13px;height:13px}
+.placement-search{margin:13px 0 9px}
+.candidate-list{display:flex;flex-direction:column;gap:6px;margin-top:9px}
+.candidate{width:100%;display:flex;align-items:flex-start;gap:9px;padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--surface);text-align:left;cursor:pointer;color:var(--ink)}
+.candidate:hover,.candidate.on{border-color:var(--accent-400);background:var(--tint)}
+.candidate .ic{width:15px;height:15px;color:var(--ink-3);margin-top:1px}
+.candidate.on .ic{color:var(--accent-700)}
+.candidate-main{min-width:0;flex:1}
+.candidate-name{display:block;font:650 12.5px var(--mono);word-break:break-word}
+.candidate-path{display:block;font:10.5px var(--mono);color:var(--ink-3);margin-top:2px;word-break:break-word}
+.placement-preview{margin-top:12px;padding:11px 12px;border:1px solid var(--accent-200);border-radius:8px;background:var(--tint);font-size:12px;color:var(--ink-2)}
+.placement-preview code{display:block;margin-top:4px;color:var(--accent-700);white-space:normal;word-break:break-word}
+.placement-actions{display:flex;align-items:center;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.placement-actions .spacer{margin-left:auto}
+
 /* load-description rows + dependency */
 .row.is-load .lbl{font-style:italic}
 .marker.load{color:var(--accent-600)}
@@ -494,6 +527,7 @@ body.result-fullscreen{overflow:hidden}
   .search{max-width:none}
   .brand .tag{display:none}
   #resultShell.fullscreen{padding:10px}
+  .placement-item{grid-template-columns:1fr auto}.placement-reason{grid-column:1/-1}
 }
 @media (min-width:1081px){
   .topbar{--content-left:calc((100vw - 1080px)/2 + 22px);--brand-safe-left:190px;--brand-main-left:max(var(--content-left),var(--brand-safe-left));--brand-main-local:calc(var(--brand-main-left) - ((100vw - 1080px)/2))}
@@ -620,13 +654,24 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.21';
+const APP_VERSION = '1.1.22';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.22',
+    date:'2026-07-22T13:36:43Z',
+    type:'feature',
+    stats:{features:2,fixes:2},
+    notes:`- Added Placement Review for moving flagged branches with path previews, parent validation, and undo
+- Added amber review flags for unique MEL transformer placements
+- Fixed unanchored Cable Schedule branches appearing beside System Names
+- Fixed MEL transformer matching when XFM or LVS appears later in an equipment tag
+- Renamed the existing review workflow to Cross-Sheet Tag Review`
+  },
   {
     version:'1.1.21',
     date:'2026-07-21T20:20:43Z',
@@ -1122,12 +1167,13 @@ function initUpdateCheck(){
 }
 
 const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:new Set(),melSel:new Set(),override:{},aoaCache:new Map(),
-  roots:[],sheets:[],ssmCombined:[],nodeById:new Map(),stats:null,search:'',idOnly:false,
+  roots:[],rawCombined:null,sheets:[],ssmCombined:[],nodeById:new Map(),stats:null,search:'',idOnly:false,
   showSpares:true,showSpaces:true,showDeps:true,showPmdMatches:true,deps:new Map(),depDetail:new Map(),hasCable:false,
   cableStruckTags:new Set(),
   pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdSuffixMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
   melRows:[],melByTag:new Map(),melByNorm:new Map(),melXfmBySuffix:new Map(),
-  epDetail:new Map(),epNameSet:new Set(),review:[],workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
+  epDetail:new Map(),epNameSet:new Set(),review:[],placements:[],reviewMode:'cross',placementRevision:0,placementQuery:'',lastPlacementMove:null,
+  workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
   cmpFilter:'all',cmpSearch:'',cmpDiff:'all',cmpSort:null,revSearch:'',revSort:null,revMinPct:null,showStats:true,
   resultFullscreen:false,
   viewCache:{tree:null,review:new Map(),reviewRows:new Map(),compare:new Map(),compareRows:new Map()}};
@@ -1577,8 +1623,9 @@ function addLoadChild(deepNode,loadName,dependency){
 function buildRoots(root){
   let id=0;
   const conv=(m,depth,parent)=>{
-    const node={id:'n'+(id++),name:m.name,depth,isId:m.isId,isLoad:!!m.isLoad,loadDependency:m.loadDependency||'',parent,children:[],
+    const node={id:'n'+(id++),name:m.name,depth,isId:m.isId,isLoad:!!m.isLoad,loadDependency:m.loadDependency||'',parent,children:[],_raw:m,
       isInstrument:!!m.isInstrument,description:m.description||'',pmdKey:m.pmdKey||'',pmdPanel:m.pmdPanel||'',pmdBuilding:m.pmdBuilding||'',
+      placementId:m.placementId||'',placementStatus:m.placementStatus||'',
       isSpare:isSpareName(m.name),isSpace:isSpaceName(m.name)};
     node.children=[...m.kids.values()].sort((a,b)=>natCmp(a.name,b.name)).map(k=>conv(k,depth+1,node));
     return node;
@@ -1881,22 +1928,27 @@ async function buildMel(tick){
       if(existing){if(!existing.upn&&upn)existing.upn=upn;if(!existing.building&&building)existing.building=building;continue;}
       const rec={tag,upn,building};S.melRows.push(rec);S.melByTag.set(keyTag,rec);
       const normKey=normSep(tag);if(normKey&&!S.melByNorm.has(normKey))S.melByNorm.set(normKey,rec);
-      if(melRoleAfterFirstHyphen(tag,'XFM')){const suffix=tag.slice(-4).toLowerCase(),list=S.melXfmBySuffix.get(suffix)||[];list.push(rec);S.melXfmBySuffix.set(suffix,list);}
+      if(hasEquipmentRole(tag,'XFM')){const suffix=equipmentSuffix(tag),list=S.melXfmBySuffix.get(suffix)||[];list.push(rec);S.melXfmBySuffix.set(suffix,list);}
     }
   }
 }
 function melRecord(value){return S.melByTag.get(tagKey(value))||S.melByNorm.get(normSep(cleanTag(value)))||null;}
 function melUpn(value){const rec=melRecord(value);return rec?rec.upn:'';}
-function melRoleAfterFirstHyphen(value,role){
-  const tag=cleanTag(value),dash=tag.indexOf('-');
-  return dash>=0&&tag.slice(dash+1).toUpperCase().startsWith(role);
+function equipmentRole(value){
+  const tag=stripPowerVariant(value).toUpperCase();
+  if(/(?:^|[-_])GIS/.test(tag))return 'GIS';
+  if(/(?:^|[-_])XFM/.test(tag))return 'XFM';
+  if(/(?:^|[-_])LV[A-Z0-9]*/.test(tag))return 'LVS';
+  return '';
 }
+function hasEquipmentRole(value,role){return equipmentRole(value)===(role==='LV'?'LVS':role);}
+function equipmentSuffix(value){const tag=stripPowerVariant(value);return tag.length>=4?tag.slice(-4).toLowerCase():'';}
 function melMatchingTransformer(equipment,current){
-  const equip=cleanTag(equipment),parent=cleanTag(current),suffix=equip.slice(-4).toLowerCase();
+  const equip=stripPowerVariant(equipment),parent=stripPowerVariant(current),suffix=equipmentSuffix(equip);
   const expected=parent.slice(0,-4)+equip.slice(-4),exact=melRecord(expected);
-  if(exact&&melRoleAfterFirstHyphen(exact.tag,'XFM'))return exact;
-  const candidates=S.melXfmBySuffix.get(suffix)||[],stem=normSep(parent.slice(0,-4));
-  return candidates.find(rec=>normSep(rec.tag.slice(0,-4))===stem)||(candidates.length===1?candidates[0]:null);
+  if(exact&&hasEquipmentRole(exact.tag,'XFM'))return exact;
+  const candidates=S.melXfmBySuffix.get(suffix)||[];
+  return candidates.length===1?candidates[0]:null;
 }
 function stripPowerVariant(value){return cleanTag(value).replace(/[_-](?:NPS|CPS)$/i,'');}
 function melContainingRecord(value){
@@ -1925,17 +1977,31 @@ function melCimParent(equipment){
   return building?building+' - CIM':'';
 }
 function melSyntheticParent(equipment){return melScrSccParent(equipment)||melCimParent(equipment);}
-function melCorrectClosestParent(equipment,parent){
-  const equip=cleanTag(equipment),current=cleanTag(parent);
-  if(equip.length<4||current.length<4||!melRoleAfterFirstHyphen(equip,'LV')||!melRoleAfterFirstHyphen(current,'XFM'))return current;
-  if(equip.slice(-4).toLowerCase()===current.slice(-4).toLowerCase())return current;
-  const match=melMatchingTransformer(equip,current);
-  return match?match.tag:current;
+function melTransformerDecision(equipment,parent){
+  const equip=stripPowerVariant(equipment),current=stripPowerVariant(parent);
+  if(equip.length<4||current.length<4||!hasEquipmentRole(equip,'LVS')||!hasEquipmentRole(current,'XFM'))return null;
+  const suffix=equipmentSuffix(equip);
+  if(suffix===equipmentSuffix(current))return {status:'matched',corrected:current,suffix,candidates:[]};
+  const match=melMatchingTransformer(equip,current),candidates=S.melXfmBySuffix.get(suffix)||[];
+  if(match)return {status:'suggested',corrected:match.tag,suffix,candidates:[match.tag]};
+  return {status:'unplaced',corrected:current,suffix,candidates:candidates.map(rec=>rec.tag),
+    reason:candidates.length?'Multiple MEL transformers share the matching final four characters':'No MEL transformer has matching final four characters'};
 }
-function applyMelParentCorrections(segs,loadDesc){
+function melCorrectClosestParent(equipment,parent){
+  const current=cleanTag(parent),decision=melTransformerDecision(equipment,current);
+  return decision?decision.corrected:current;
+}
+function rememberMelPlacement(branch,parent,decision){
+  if(!decision||decision.status==='matched')return;
+  const rec={branchName:cleanTag(branch),originalParent:cleanTag(parent),currentParent:decision.status==='suggested'?decision.corrected:cleanTag(parent),suggestedParent:decision.status==='suggested'?decision.corrected:'',
+    status:decision.status,source:'Master Equipment List',suffix:decision.suffix,reason:decision.reason||'MEL supplied the transformer with matching final four characters'};
+  const key=[tagKey(rec.branchName),tagKey(rec.currentParent),tagKey(rec.suggestedParent),rec.status].join(KEYSEP);
+  if(!S._melPlacementSeeds.has(key))S._melPlacementSeeds.set(key,rec);
+}
+function applyMelParentCorrections(segs,loadDesc,track){
   const out=segs.slice();
-  for(let i=out.length-1;i>0;i--)out[i-1]=melCorrectClosestParent(out[i],out[i-1]);
-  if(out.length&&loadDesc)out[out.length-1]=melCorrectClosestParent(loadDesc,out[out.length-1]);
+  for(let i=out.length-1;i>0;i--){const decision=melTransformerDecision(out[i],out[i-1]);if(track)rememberMelPlacement(out[i],out[i-1],decision);if(decision)out[i-1]=decision.corrected;}
+  if(out.length&&loadDesc){const decision=melTransformerDecision(loadDesc,out[out.length-1]);if(track)rememberMelPlacement(loadDesc,out[out.length-1],decision);if(decision)out[out.length-1]=decision.corrected;}
   return out;
 }
 function melCorrectLoadRelation(loadDesc,relation){
@@ -1959,6 +2025,43 @@ function mergeRawHierarchyNode(target,source){
   return target;
 }
 const GIS_PARENT='602 Medium Voltage';
+const SYSTEM_NAMES=new Set([tagKey(GIS_PARENT)]);
+function isSystemName(value){return SYSTEM_NAMES.has(tagKey(value));}
+function placementKey(rec){return [rec.source,tagKey(rec.branchName),tagKey(rec.currentParent),tagKey(rec.suggestedParent),rec.status].join(KEYSEP);}
+function activePlacements(){return S.placements.filter(rec=>!rec.resolved);}
+function registerPlacement(rec){
+  const key=placementKey(rec),existing=S.placements.find(item=>item.key===key);
+  if(existing){if(!existing.node&&rec.node)existing.node=rec.node;return existing;}
+  const item={id:'place-'+(++S._placementId),resolved:false,...rec,key};
+  if(item.node){item.node.placementId=item.id;item.node.placementStatus=item.status;}
+  S.placements.push(item);return item;
+}
+function rawOccurrences(root,value){
+  const found=[],wanted=tagKey(value);
+  const walk=(holder,path)=>{for(const [key,node] of holder.kids){const next=[...path,node.name];if(tagKey(node.name)===wanted)found.push({holder,key,node,path:next});walk(node,next);}};
+  walk(root,[]);return found;
+}
+function bindMelPlacementSeeds(root){
+  for(const seed of S._melPlacementSeeds.values()){
+    const expectedParent=seed.status==='suggested'?seed.suggestedParent:seed.currentParent;
+    const occurrence=rawOccurrences(root,seed.branchName).find(hit=>tagKey(hit.holder.name)===tagKey(expectedParent))||rawOccurrences(root,seed.branchName)[0];
+    registerPlacement({...seed,node:occurrence&&occurrence.node,path:occurrence?occurrence.path:[],
+      currentParent:occurrence?occurrence.holder.name:seed.currentParent});
+  }
+}
+function enforceSystemRoots(root,collect){
+  if(!rawKidEntry(root.kids,GIS_PARENT))return 0;
+  let detached=0;
+  for(const [key,node] of [...root.kids.entries()]){
+    if(isSystemName(node.name))continue;
+    root.kids.delete(key);
+    if(collect!==false)registerPlacement({node,branchName:node.name,originalParent:'Top level',currentParent:'Unplaced',suggestedParent:'',status:'unplaced',source:'Hierarchy validation',
+      reason:'Only System Names can be top-level hierarchy items',path:[node.name]});
+    else{if(!root._detached)root._detached=new Map();root._detached.set(node.name,node);}
+    detached++;
+  }
+  return detached;
+}
 function repairEasyPowerHierarchyParents(root){
   let moved=0;
   const walk=holder=>{
@@ -1989,8 +2092,8 @@ function melLvsDescendants(transformer){
   const found=[];
   const walk=holder=>{
     for(const [key,node] of [...holder.kids.entries()]){
-      if(melRoleAfterFirstHyphen(node.name,'XFM'))continue;
-      if(melRoleAfterFirstHyphen(node.name,'LVS')){found.push({holder,key,node});continue;}
+      if(hasEquipmentRole(node.name,'XFM'))continue;
+      if(hasEquipmentRole(node.name,'LVS')){found.push({holder,key,node});continue;}
       walk(node);
     }
   };
@@ -1999,7 +2102,7 @@ function melLvsDescendants(transformer){
 function repairMelTransformerBranches(root){
   let moved=0;
   const visit=container=>{
-    const transformers=[...container.kids.values()].filter(node=>melRoleAfterFirstHyphen(node.name,'XFM'));
+    const transformers=[...container.kids.values()].filter(node=>hasEquipmentRole(node.name,'XFM'));
     for(const transformer of transformers){
       for(const {holder,key:childKey,node:child} of melLvsDescendants(transformer)){
         const corrected=melCorrectClosestParent(child.name,transformer.name);
@@ -2020,7 +2123,7 @@ function ssmAncestorByRole(row,byEquipment,role){
   let name=cleanTag(row&&row[1]),seen=new Set();
   while(name&&!seen.has(tagKey(name))){
     const key=tagKey(name);seen.add(key);
-    if(melRoleAfterFirstHyphen(name,role))return name;
+    if(hasEquipmentRole(name,role))return name;
     const parentRow=byEquipment.get(key);name=cleanTag(parentRow&&parentRow[1]);
   }
   return '';
@@ -2031,7 +2134,7 @@ function repairMelSsmRows(rows){
   const emitted=new Set(),out=[];
   for(const row of rows){
     const equip=cleanTag(row&&row[0]),parent=cleanTag(row&&row[1]);
-    const transformer=melRoleAfterFirstHyphen(parent,'XFM')?parent:(melRoleAfterFirstHyphen(equip,'LVS')?ssmAncestorByRole(row,byEquipment,'XFM'):'');
+    const transformer=hasEquipmentRole(parent,'XFM')?parent:(hasEquipmentRole(equip,'LVS')?ssmAncestorByRole(row,byEquipment,'XFM'):'');
     const corrected=transformer?melCorrectClosestParent(equip,transformer):parent;
     if(transformer&&tagKey(corrected)!==tagKey(transformer)){
       const correctedKey=tagKey(corrected);
@@ -2065,25 +2168,26 @@ function repairEasyPowerSsmRows(rows){
 function buildCableParentPlan(rows){
   const existing=new Map();
   for(const row of rows){const key=tagKey(row&&row[0]);if(key&&!existing.has(key))existing.set(key,row);}
-  const relations=new Map(),seeds=new Set(),generated=new Set();
+  const relations=new Map(),seeds=new Set(),generated=new Set(),unresolved=[];
   for(const row of rows){
     const equip=cleanTag(row&&row[0]),parent=cleanTag(row&&row[1]);
     const dependency=row&&row[2]!=null?cleanTag(row[2]):depOf(equip);
     const cableParent=depOf(equip),seedKey=tagKey(equip);
     if(!equip||!parent||!dependency||tagKey(parent)!==tagKey(dependency)||!cableParent||tagKey(cableParent)===tagKey(parent))continue;
     const local=[{equip,parent:cableParent,generated:false}],seen=new Set([seedKey]);
-    let cursor=cableParent,cyclic=false;
+    let cursor=cableParent,cyclic=false,anchored=false;
     while(cursor){
       const cursorKey=tagKey(cursor);
       if(seen.has(cursorKey)){cyclic=true;break;}
       seen.add(cursorKey);
-      if(cursorKey===tagKey(parent)||existing.has(cursorKey)||relations.has(cursorKey))break;
+      if(cursorKey===tagKey(parent)||existing.has(cursorKey)||relations.has(cursorKey)){anchored=true;break;}
       const upstream=depOf(cursor);
       local.push({equip:cursor,parent:upstream,generated:true});
       if(!upstream)break;
       cursor=upstream;
     }
-    if(cyclic)continue;
+    if(cyclic||!anchored){unresolved.push({branchName:equip,currentParent:parent,suggestedParent:cableParent,status:'unplaced',source:'Cable Schedule',
+      reason:cyclic?'Cable Schedule parent chain contains a cycle':'Cable Schedule parent chain does not connect to the existing hierarchy',chain:local.map(item=>item.equip)});continue;}
     seeds.add(seedKey);
     for(const relation of local){
       const key=tagKey(relation.equip);if(relations.has(key))continue;
@@ -2091,7 +2195,13 @@ function buildCableParentPlan(rows){
       if(relation.generated)generated.add(key);
     }
   }
-  return {relations,seeds,generated};
+  return {relations,seeds,generated,unresolved};
+}
+function registerCablePlacementIssues(root,plan){
+  for(const issue of (plan&&plan.unresolved)||[]){
+    const occurrence=rawOccurrences(root,issue.branchName).find(hit=>tagKey(hit.holder.name)===tagKey(issue.currentParent))||rawOccurrences(root,issue.branchName)[0];
+    registerPlacement({...issue,node:occurrence&&occurrence.node,path:occurrence?occurrence.path:[]});
+  }
 }
 function cablePlannedParents(plan,equipment){
   const names=[],seen=new Set();let relation=plan.relations.get(tagKey(equipment));
@@ -2138,10 +2248,9 @@ function repairCableHierarchyParents(root,plan){
         if(found){anchor=found;anchorIndex=i;break;}
       }
     }
+    if(!anchor)continue;
     occurrence.holder.kids.delete(entry[0]);
-    let target;
-    if(anchor){target=anchor;for(let i=anchorIndex-1;i>=0;i--)target=ensureRawHierarchyChild(target,chain[i]);}
-    else{target=ensureRawHierarchyChild(root,chain[chain.length-1]);for(let i=chain.length-2;i>=0;i--)target=ensureRawHierarchyChild(target,chain[i]);}
+    let target=anchor;for(let i=anchorIndex-1;i>=0;i--)target=ensureRawHierarchyChild(target,chain[i]);
     if(occurrence.node.isLoad)occurrence.node.loadDependency=relation.parent;
     const duplicate=rawKidEntry(target.kids,occurrence.node.name);
     if(duplicate)mergeRawHierarchyNode(duplicate[1],occurrence.node);else target.kids.set(occurrence.node.name,occurrence.node);
@@ -2301,7 +2410,7 @@ async function buildHierarchy(){
     const tick=async(label)=>{done++;await maybeYield(report,READ_LO+(READ_HI-READ_LO)*(done/total),label);};
 
     report(.02,'Reading source data');await raf();
-    S.cableStruckTags=new Set();
+    S.cableStruckTags=new Set();S.placements=[];S._placementId=0;S._melPlacementSeeds=new Map();S.lastPlacementMove=null;
     const loadTags=await collectLoadDescriptionTags(keys,tick);
     await buildMel(tick);
     await buildDeps(tick);
@@ -2320,7 +2429,7 @@ async function buildHierarchy(){
       for(let i=headerRow+1;i<aoa.length;i++){
         await tick(label);
         let {segs,hasId,idName,loadDesc,finalSource}=rowToPath(aoa[i],cols,rec,i,loadTags);
-        segs=applyMelParentCorrections(gisBusCut(segs),loadDesc); // also correct MEL-backed LV transformer parents
+        segs=applyMelParentCorrections(gisBusCut(segs),loadDesc,true); // also correct MEL-backed LV transformer parents
         if(!segs.length)continue;
         rowsRead++;
         const deepest=segs[segs.length-1];
@@ -2355,6 +2464,7 @@ async function buildHierarchy(){
     repairEasyPowerHierarchyParents(combined);for(const sh of sheets)repairEasyPowerHierarchyParents(sh._sMap);
     report(.798,'Applying Cable Schedule parent chains');await raf();
     const preparedCombined=repairEasyPowerSsmRows(repairMelSsmRows(ssmCombined)),combinedCablePlan=buildCableParentPlan(preparedCombined);
+    registerCablePlacementIssues(combined,combinedCablePlan);
     repairCableHierarchyParents(combined,combinedCablePlan);
     const finalCombinedRows=repairCableSsmRows(preparedCombined,combinedCablePlan);
     for(const sh of sheets){
@@ -2364,10 +2474,12 @@ async function buildHierarchy(){
     report(.80,'Linking PMD instruments');await raf();
     const instrumentCount=attachPmdInstruments(combined);
     for(const sh of sheets)_attachPmdInstruments(sh._sMap,null);
+    bindMelPlacementSeeds(combined);
+    enforceSystemRoots(combined,true);for(const sh of sheets)enforceSystemRoots(sh._sMap,false);
     S.sheets=sheets;S.ssmCombined=uniqueSsmRows(appendPmdSsmRows(finalCombinedRows,true));
     for(const sh of S.sheets)sh.ssmRows=uniqueSsmRows(appendPmdSsmRows(sh.ssmRows,false));
     report(.82,'Finalizing tree');await raf();
-    S.roots=finalize(combined); // call last so nodeById matches the displayed combined tree
+    S.rawCombined=combined;S.roots=finalize(combined); // call last so nodeById matches the displayed combined tree
     // every equipment name in the Easy Power hierarchy (for cable cross-check)
     report(.86,'Indexing equipment');await raf();
     S.epNameSet=new Set();const collect=n=>{S.epNameSet.add(clean(n.name).toLowerCase());n.children.forEach(collect);};S.roots.forEach(collect);
@@ -2377,7 +2489,7 @@ async function buildHierarchy(){
     S.stats=computeStats(S.roots);
     S.stats.rowsRead=rowsRead;S.stats.tabs=keys.length;
     S.stats.files=new Set(keys.map(k=>k.split(KEYSEP)[0])).size;
-    S.stats.deps=S.deps.size;S.stats.loads=loadCount;S.stats.instruments=instrumentCount;S.stats.review=S.review.length;
+    S.stats.deps=S.deps.size;S.stats.loads=loadCount;S.stats.instruments=instrumentCount;S.stats.review=S.review.length+activePlacements().length;
     report(1,'Done');
   });
   if(!S.roots.length){toast('No hierarchy rows found in the selected tabs');return;}
@@ -2411,6 +2523,88 @@ async function buildReview(report){
       S.review.push({...rec,searchKey:reviewSearchKey(rec)});
     }
   }
+}
+function rawSubtreeCount(node){let count=0;const walk=n=>{for(const child of n.kids.values()){count++;walk(child);}};walk(node);return count;}
+function rawContains(root,target){if(root===target)return true;for(const child of root.kids.values())if(rawContains(child,target))return true;return false;}
+function findRawHolderByNode(root,target){
+  for(const [key,node] of root.kids){if(node===target)return {holder:root,key,node};const found=findRawHolderByNode(node,target);if(found)return found;}
+  return null;
+}
+function nodePath(node){const names=[];for(let cur=node;cur;cur=cur.parent)names.push(cur.name);return names.reverse();}
+function placementExpectedParentRole(branch){const role=equipmentRole(branch);return role==='LVS'?'XFM':role==='XFM'?'GIS':role==='GIS'?'SYSTEM':'';}
+function validPlacementParent(issue,node){
+  if(!issue||!issue.node||!node||!node._raw||node._raw.isInstrument||rawContains(issue.node,node._raw))return false;
+  const expected=placementExpectedParentRole(issue.branchName);
+  if(expected==='SYSTEM')return isSystemName(node.name);
+  return expected?hasEquipmentRole(node.name,expected):true;
+}
+function placementCandidates(issue,query){
+  const q=clean(query).toLowerCase(),items=[];
+  const walk=node=>{if(validPlacementParent(issue,node)){
+    const path=nodePath(node),search=(node.name+' '+path.join(' ')).toLowerCase();
+    if(!q||search.includes(q)){let score=0;if(tagKey(node.name)===tagKey(issue.suggestedParent))score+=1000;if(issue.suffix&&equipmentSuffix(node.name)===issue.suffix)score+=200;score-=node.depth;items.push({node,path,score});}
+  }node.children.forEach(walk);};S.roots.forEach(walk);
+  return items.sort((a,b)=>b.score-a.score||natCmp(a.node.name,b.node.name)).slice(0,60);
+}
+function cloneSsmRows(rows){return rows.map(row=>row.map(value=>value&&typeof value==='object'&&!Array.isArray(value)?{...value}:value));}
+function setBranchRegisterParent(rows,equipment,parent){
+  let found=false;const out=rows.map(row=>{if(tagKey(row&&row[0])!==tagKey(equipment))return row;found=true;const fixed=[...row];fixed[1]=parent;fixed[2]=parent;
+    const meta=fixed[3]&&typeof fixed[3]==='object'?{...fixed[3]}:{};meta.keepDuplicateDep=true;fixed[3]=meta;return fixed;});
+  if(!found)out.push([equipment,parent,parent,{keepDuplicateDep:true}]);return out;
+}
+function ensureRawPath(root,path){let holder=root;for(const name of path){holder=ensureRawHierarchyChild(holder,name);}return holder;}
+function moveRawNode(root,node,target){
+  const duplicate=rawKidEntry(target.kids,node.name);if(duplicate&&duplicate[1]!==node)return null;
+  const from=findRawHolderByNode(root,node);let detachedKey='';
+  if(from)from.holder.kids.delete(from.key);
+  else if(root._detached){for(const [key,value] of root._detached)if(value===node){detachedKey=key;root._detached.delete(key);break;}}
+  target.kids.set(node.name,node);return {root,node,target,from,detachedKey};
+}
+function undoRawMove(move){
+  const entry=rawKidEntry(move.target.kids,move.node.name);if(entry&&entry[1]===move.node)move.target.kids.delete(entry[0]);
+  if(move.from)move.from.holder.kids.set(move.from.key,move.node);
+  else if(move.detachedKey){if(!move.root._detached)move.root._detached=new Map();move.root._detached.set(move.detachedKey,move.node);}
+}
+async function refreshPlacementModels(){
+  S.placementRevision++;clearResultCache();
+  S.roots=finalize(S.rawCombined);for(const sh of S.sheets)sh._roots=null;
+  S.epNameSet=new Set();const collect=n=>{S.epNameSet.add(clean(n.name).toLowerCase());n.children.forEach(collect);};S.roots.forEach(collect);
+  await buildReview();if(S.wcRows)await buildComparison();
+  const previous=S.stats||{},computed=computeStats(S.roots);S.stats={...previous,...computed,review:S.review.length+activePlacements().length};
+  if(S.tab==='review'&&!S.hasCable&&!activePlacements().length)S.tab='tree';
+  renderResult();
+}
+async function movePlacementBranch(issueId,parentNodeId){
+  const issue=S.placements.find(item=>item.id===issueId&&!item.resolved),parent=S.nodeById.get(parentNodeId);if(!issue||!parent||!validPlacementParent(issue,parent))return toast('Choose a valid parent for this branch');
+  if(rawKidEntry(parent._raw.kids,issue.branchName))return toast('That parent already contains this branch');
+  const oldIssue={resolved:issue.resolved,currentParent:issue.currentParent,path:issue.path,placementId:issue.node.placementId,placementStatus:issue.node.placementStatus};
+  const oldCombinedRows=cloneSsmRows(S.ssmCombined),oldSheetRows=S.sheets.map(sh=>cloneSsmRows(sh.ssmRows));
+  const combinedMove=moveRawNode(S.rawCombined,issue.node,parent._raw);if(!combinedMove)return toast('Unable to move that branch');
+  const sheetMoves=[],parentPath=nodePath(parent);
+  for(const sh of S.sheets){
+    let branch=rawOccurrences(sh._sMap,issue.branchName)[0]?.node;
+    if(!branch&&sh._sMap._detached){for(const value of sh._sMap._detached.values())if(tagKey(value.name)===tagKey(issue.branchName)){branch=value;break;}}
+    if(!branch)continue;const target=ensureRawPath(sh._sMap,parentPath),move=moveRawNode(sh._sMap,branch,target);if(move)sheetMoves.push(move);
+  }
+  S.ssmCombined=setBranchRegisterParent(S.ssmCombined,issue.branchName,parent.name);
+  S.sheets.forEach(sh=>{sh.ssmRows=setBranchRegisterParent(sh.ssmRows,issue.branchName,parent.name);});
+  issue.resolved=true;issue.currentParent=parent.name;issue.path=[...parentPath,issue.branchName];issue.node.placementId='';issue.node.placementStatus='';
+  S.lastPlacementMove={type:'move',issue,oldIssue,combinedMove,sheetMoves,oldCombinedRows,oldSheetRows};
+  closeDrawer();await refreshPlacementModels();toast('Branch moved under '+parent.name);
+}
+async function acceptPlacement(issueId){
+  const issue=S.placements.find(item=>item.id===issueId&&!item.resolved);if(!issue)return;
+  const oldIssue={resolved:issue.resolved,placementId:issue.node&&issue.node.placementId,placementStatus:issue.node&&issue.node.placementStatus};
+  issue.resolved=true;if(issue.node){issue.node.placementId='';issue.node.placementStatus='';}
+  S.lastPlacementMove={type:'accept',issue,oldIssue};closeDrawer();await refreshPlacementModels();toast('Placement accepted');
+}
+async function undoPlacement(){
+  const action=S.lastPlacementMove;if(!action)return;
+  if(action.type==='move'){
+    undoRawMove(action.combinedMove);action.sheetMoves.forEach(undoRawMove);S.ssmCombined=action.oldCombinedRows;S.sheets.forEach((sh,i)=>{sh.ssmRows=action.oldSheetRows[i];});
+    Object.assign(action.issue,action.oldIssue);action.issue.node.placementId=action.oldIssue.placementId;action.issue.node.placementStatus=action.oldIssue.placementStatus;
+  }else{Object.assign(action.issue,action.oldIssue);if(action.issue.node){action.issue.node.placementId=action.oldIssue.placementId;action.issue.node.placementStatus=action.oldIssue.placementStatus;}}
+  S.lastPlacementMove=null;await refreshPlacementModels();toast('Placement change undone');
 }
 /* Resolve a stored SSM row [equip, parent, depOverride, metadata] to display values. */
 function ssmResolve(r){
@@ -2468,7 +2662,7 @@ async function buildComparison(report){
 /* ---- result screen ---- */
 function statCard(icon,label,val,muted){return `<div class="stat ${muted?'muted':''}"><div class="sl">${ic(icon)}${label}</div><div class="sv">${val}</div></div>`;}
 function renderResult(){
-  const st=S.stats;
+  const st=S.stats,placementCount=activePlacements().length;
   const tab=(t,label,icon,count)=>`<button class="tabbtn ${S.tab===t?'on':''}" data-tab="${t}">${ic(icon)}${esc(label)}${count!=null?`<span class="tabcount">${count}</span>`:''}</button>`;
   $('#view').innerHTML=`
   <section id="resultShell" class="${S.resultFullscreen?'fullscreen':''}">
@@ -2482,7 +2676,7 @@ function renderResult(){
     </div></div>
     <div class="tabbar">
       ${tab('tree','Hierarchy','list-tree')}
-      ${S.hasCable?tab('review','Review','triangle-alert',st.review):''}
+      ${(S.hasCable||placementCount)?tab('review','Review','triangle-alert',st.review):''}
       ${S.wcRows?tab('compare','Comparison','git-branch',S.compare.length):''}
       <button class="statstoggle" id="statsToggle" aria-pressed="${S.showStats}" title="${S.showStats?'Hide stats':'Show stats'}">${ic(S.showStats?'chevrons-up':'chevrons-down')}<span>${S.showStats?'Hide stats':'Show stats'}</span></button>
       <button class="btn fullbtn" id="fullscreenToggle" title="${S.resultFullscreen?'Exit full screen':'Full screen'}" aria-label="${S.resultFullscreen?'Exit full screen':'Full screen'}">${ic(S.resultFullscreen?'minimize-2':'maximize-2')}</button>
@@ -2674,7 +2868,7 @@ function reviewRows(){
 }
 function reviewPanelCacheKey(){
   const sort=S.revSort?S.revSort.col+':'+S.revSort.dir:'';
-  return ['review',S.review.length,S.revSearch,S.revMinPct==null?'':S.revMinPct,sort].join(KEYSEP);
+  return ['review',S.reviewMode,S.review.length,activePlacements().length,S.placementRevision,S.revSearch,S.revMinPct==null?'':S.revMinPct,sort].join(KEYSEP);
 }
 function reviewRowsCacheKey(){return reviewPanelCacheKey();}
 function getReviewRowsCache(){
@@ -2694,7 +2888,7 @@ function renderReviewRowsVirtual(rec,key,el){
   mountVirtualRows('#revBody',rec.rows,reviewMakeRow,`<tr><td colspan="5" class="empty">No rows match the filter.</td></tr>`,{card:'#revCard',ind:'#revInd',colspan:5,cacheName:'review',key,panel:el,scrollSel:'#revCard',htmlCache:rec.html});
 }
 function refreshReview(){
-  if(!S.review.length)return;
+  if(S.reviewMode!=='cross'||!S.review.length)return;
   const el=$('#panel-review'),key=reviewPanelCacheKey();
   markPanelCachePending(el,key);
   const rec=getReviewRowsCache(),rows=rec.rows;
@@ -2703,6 +2897,7 @@ function refreshReview(){
   renderReviewRowsVirtual(rec,key,el);
 }
 function wireReviewPanel(){
+  $$('#panel-review [data-review-mode]').forEach(btn=>btn.onclick=()=>{if(S.reviewMode===btn.dataset.reviewMode)return;S.reviewMode=btn.dataset.reviewMode;renderReviewPanel();});
   const rq=$('#rq');if(rq){let d;rq.addEventListener('input',()=>{clearTimeout(d);d=setTimeout(()=>{S.revSearch=rq.value;refreshReview();},220);});}
   const rqx=$('#rqx');if(rqx)rqx.onclick=()=>{S.revSearch='';const i=$('#rq');if(i){i.value='';i.focus();}$('#rqx').classList.remove('show');refreshReview();};
   const rp=$('#rpct');if(rp){let d;rp.addEventListener('input',()=>{clearTimeout(d);d=setTimeout(()=>{const v=parseFloat(rp.value);S.revMinPct=(rp.value===''||isNaN(v))?null:Math.max(0,Math.min(100,v));refreshReview();},220);});}
@@ -2712,19 +2907,43 @@ function wireReviewPanel(){
     refreshReview();
   });
 }
+function reviewModesHtml(){const placements=activePlacements().length;return `<div class="review-modes" role="tablist" aria-label="Review type">
+  <button class="review-mode ${S.reviewMode==='cross'?'on':''}" data-review-mode="cross" role="tab" aria-selected="${S.reviewMode==='cross'}">${ic('table-2')}Cross-Sheet Tag Review <span class="review-mode-count">${S.review.length}</span></button>
+  <button class="review-mode ${S.reviewMode==='placement'?'on':''}" data-review-mode="placement" role="tab" aria-selected="${S.reviewMode==='placement'}">${ic('git-branch')}Placement Review <span class="review-mode-count">${placements}</span></button>
+  </div>`;}
+function renderPlacementReviewPanel(el){
+  const q=clean(S.placementQuery).toLowerCase(),all=activePlacements(),items=all.filter(item=>!q||[item.branchName,item.currentParent,item.suggestedParent,item.source,item.reason].join(' ').toLowerCase().includes(q));
+  const list=items.length?`<div class="placement-list">${items.map(item=>{
+    const descendants=item.node?rawSubtreeCount(item.node):0,path=(item.path&&item.path.length?item.path:[item.currentParent,item.branchName].filter(Boolean)).join(' / ');
+    return `<button class="placement-item" data-placement="${item.id}"><div><div class="placement-name">${esc(item.branchName)}</div><div class="placement-meta">${descendants} descendant${descendants===1?'':'s'} · ${esc(item.source)}</div></div>
+      <div class="placement-reason">${esc(item.reason)}<span class="placement-path">${esc(path||'Not currently placed')}</span></div>
+      <span class="placement-state">${ic(item.status==='suggested'?'circle-check':'triangle-alert')}${item.status==='suggested'?'Suggested':'Needs parent'}</span></button>`;
+  }).join('')}</div>`:`<div class="note info">${ic('circle-check')}<div>${all.length?'No placement items match this filter.':'No branches are waiting for placement review.'}</div></div>`;
+  el.innerHTML=reviewModesHtml()+`<div class="note warn" style="margin-bottom:12px">${ic('triangle-alert')}<div>Review branches that were auto-placed from a unique MEL match or could not be anchored safely. Moving a branch keeps its full subtree together.</div></div>
+    <div class="toolbar"><div class="search">${ic('search')}<input id="placementFilter" type="text" placeholder="Filter branches…" value="${esc(S.placementQuery)}" autocomplete="off"><button class="qx ${S.placementQuery?'show':''}" id="placementFilterX">${ic('x')}</button></div>
+    ${S.lastPlacementMove?`<button class="btn sm spacer" id="placementUndo">${ic('rotate-ccw')}Undo last change</button>`:''}</div>${list}`;
+  wireReviewPanel();
+  const input=$('#placementFilter');if(input){let timer;input.oninput=()=>{clearTimeout(timer);timer=setTimeout(()=>{S.placementQuery=input.value;renderReviewPanel();},180);};}
+  const clear=$('#placementFilterX');if(clear)clear.onclick=()=>{S.placementQuery='';renderReviewPanel();};
+  $$('#panel-review [data-placement]').forEach(btn=>btn.onclick=()=>openPlacementDrawer(btn.dataset.placement));
+  const undo=$('#placementUndo');if(undo)undo.onclick=undoPlacement;
+  markPanelCacheReady(el,reviewPanelCacheKey());
+}
 function renderReviewPanel(){
   const el=$('#panel-review');if(!el)return;
   const key=reviewPanelCacheKey();
+  if(S.reviewMode==='placement'){bumpRender();renderPlacementReviewPanel(el);return;}
   if(isPanelCacheLive(el,key)){wireReviewPanel();renderReviewRowsVirtual(getReviewRowsCache(),key,el);return;}
   if(restorePanelCache('review',key,el,'#revCard')){wireReviewPanel();renderReviewRowsVirtual(getReviewRowsCache(),key,el);return;}
   bumpRender();
   markPanelCachePending(el,key);
   if(!S.review.length){
-    el.innerHTML=`<div class="note info">${ic('circle-check')}<div>Every Cable Schedule load has an exact match in the Easy Power import.</div></div>`;
+    el.innerHTML=reviewModesHtml()+`<div class="note info">${ic('circle-check')}<div>${S.hasCable?'Every Cable Schedule load has an exact match in the Easy Power import.':'No Cable Schedule was included for cross-sheet review.'}</div></div>`;
+    wireReviewPanel();
     rememberPanelCache('review',key,el,null);return;
   }
   const sc=col=>S.revSort&&S.revSort.col===col?(S.revSort.dir==='asc'?'sort-asc':'sort-desc'):'';
-  el.innerHTML=`
+  el.innerHTML=reviewModesHtml()+`
     <div class="note warn" style="margin-bottom:12px">${ic('triangle-alert')}<div>Cable Schedule loads with <b>no exact match</b> in the Easy Power hierarchy. Up to <b>3 possible matches</b> (best first) via strict near-matching — e.g. a <code>-</code> swapped for <code>_</code>. Click a column to sort; set a minimum % to filter weak matches.</div></div>
     <div class="toolbar">
       <div class="search">${ic('search')}<input id="rq" type="text" placeholder="Filter review…" value="${esc(S.revSearch)}" autocomplete="off"><button class="qx ${S.revSearch?'show':''}" id="rqx">${ic('x')}</button></div>
@@ -2896,19 +3115,20 @@ function rowInner(node,prefixArr,isLast,isRoot,hl){
   const descTitle=node.isInstrument&&node.description?` title="${esc(node.description)}"`:'';
   const nk=clean(node.name).toLowerCase();
   const infoBtn=(S.depDetail.has(nk)||S.epDetail.has(nk)||S.cableStruckTags.has(tagKey(node.name))||melRecord(node.name)||node.pmdKey||node.pmdPanel)?`<button class="rowinfo" data-detail="${node.id}" title="Details" aria-label="Details for ${esc(node.name)}">${ic('info')}</button>`:'';
+  const placementBtn=node.placementId?`<button class="placement-flag" data-placement="${node.placementId}" title="Review this branch placement" aria-label="Review placement for ${esc(node.name)}">${ic('triangle-alert')}</button>`:'';
   if(isRoot){
     return `<div class="row root ${hasKids?'':'leafrow'}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
       ${hasKids?`<span class="twist">${ic('chevron-right')}</span>`:'<span class="twist"></span>'}
       <span class="badge-root">${ic('zap')}</span>
       <span class="lbl"${descTitle}>${lblHtml(node.name,hl)}</span>
-      ${depBadge}${pmdBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${infoBtn}</div>`;
+      ${depBadge}${pmdBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${placementBtn}${infoBtn}</div>`;
   }
   const marker=hasKids?'<span class="marker branch"></span>':(node.isInstrument?`<span class="marker instrument">${ic('database')}</span>`:node.isLoad?`<span class="marker load">${ic('corner-down-right')}</span>`:node.isId?`<span class="marker leaf">${ic('tag')}</span>`:'<span class="marker dot"></span>');
   return `<div class="row ${hasKids?'':'leafrow'} ${node.isLoad?'is-load':''} ${node.isInstrument?'is-instrument':''} ${node.isSpare?'is-spare':''} ${node.isSpace?'is-space':''}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
     <span class="gut">${gutterHtml(prefixArr,isLast)}</span>
     ${hasKids?`<span class="twist">${ic('chevron-right')}</span>`:'<span class="twist"></span>'}
     ${marker}<span class="lbl ${hasKids?'':'lbl-leaf'}"${descTitle}>${lblHtml(node.name,hl)}</span>
-    ${depBadge}${pmdBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${infoBtn}</div>`;
+    ${depBadge}${pmdBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${placementBtn}${infoBtn}</div>`;
 }
 function makeNode(node,prefixArr,isLast,isRoot){
   node._prefix=prefixArr;node._isLast=isLast;node._isRoot=isRoot;node._built=false;
@@ -2947,6 +3167,8 @@ function expandNode(row,node){
 function collapseNode(row){const kids=row.parentElement.querySelector(':scope > .kids');kids.hidden=true;row.classList.remove('open');row.setAttribute('aria-expanded','false');}
 function toggleNode(row,node){if(row.classList.contains('open'))collapseNode(row);else expandNode(row,node);}
 function onTreeClick(e){
+  const placement=e.target.closest('.placement-flag');
+  if(placement){e.stopPropagation();openPlacementDrawer(placement.dataset.placement);return;}
   const info=e.target.closest('.rowinfo');
   if(info){e.stopPropagation();openDetail(info.dataset.detail);return;}
   const row=e.target.closest('.row');if(!row)return;
@@ -3172,7 +3394,7 @@ function addSsm3Sheet(wb,name,rows,used){
   styleHeaderRow(ws,0);setFilter(ws,0);
   addSheet(wb,ws,name,used,1);
 }
-/* Review — Cable Schedule loads with no exact match in Easy Power (top 3 matches). */
+/* Cross-Sheet Tag Review — Cable Schedule loads with no exact match in Easy Power. */
 function addReviewSheet(wb,used){
   if(!S.review.length)return;
   const src=(typeof sortReviewList==='function')?sortReviewList(S.review):S.review; // all unmatched, in display sort order
@@ -3189,7 +3411,14 @@ function addReviewSheet(wb,used){
   const rng=XLSX.utils.decode_range(ws['!ref']);            // show % as "86%", centered, numeric-sortable
   for(let R=1;R<=rng.e.r;R++)for(const C of [4,6,8]){const cell=ws[XLSX.utils.encode_cell({r:R,c:C})];if(cell&&typeof cell.v==='number'){cell.z='0"%"';cell.s=XL_PCT;}}
   styleHeaderRow(ws,0);setFilter(ws,0);
-  addSheet(wb,ws,'Review - Cable not in EP',used,1);
+  addSheet(wb,ws,'Cross-Sheet Tag Review',used,1);
+}
+function addPlacementReviewSheet(wb,used){
+  const rows=activePlacements();if(!rows.length)return;
+  const aoa=[['Branch','Status','Source','Original Parent','Current Parent','Suggested Parent','Descendants','Reason']];
+  for(const item of rows)aoa.push([item.branchName,item.status==='suggested'?'Suggested':'Needs Parent',item.source,item.originalParent||'',item.currentParent||'',item.suggestedParent||'',item.node?rawSubtreeCount(item.node):0,item.reason]);
+  const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:28},{wch:14},{wch:22},{wch:25},{wch:25},{wch:25},{wch:12},{wch:54}];
+  styleHeaderRow(ws,0);setFilter(ws,0);addSheet(wb,ws,'Placement Review',used,1);
 }
 /* Comparison — current register vs imported Current Working Copy. Honors the
    Spares/Spaces view toggles so it matches the register in the same workbook. */
@@ -3224,7 +3453,7 @@ async function runExport(sub,estRows,work){
   catch(e){console.error('export failed',e);toast('Export failed — please try again');return false;}
   finally{if(heavy){await sleep(160);hideOverlay();}}
 }
-const ssmExportRows=()=>S.ssmCombined.length+S.review.length+(S.wcRows?S.compare.length:0);
+const ssmExportRows=()=>S.ssmCombined.length+S.review.length+activePlacements().length+(S.wcRows?S.compare.length:0);
 async function exportHierarchyXlsx(){
   if(!S.roots.length){toast('Nothing to export');return;}
   let mode='combined';
@@ -3244,7 +3473,7 @@ async function exportExtoSSMXlsx(){
     const wb=XLSX.utils.book_new(),used=new Set();
     if(mode==='separate')S.sheets.forEach(sh=>addExtoSheet(wb,'SSM-'+sh.sheetName,sh.ssmRows,used));
     else addExtoSheet(wb,'Exto SSM',S.ssmCombined,used);
-    addReviewSheet(wb,used);addCompareSheet(wb,used);
+    addReviewSheet(wb,used);addPlacementReviewSheet(wb,used);addCompareSheet(wb,used);
     downloadBlob('exto-ssm-export.xlsx',wbBlob(wb));
   }))toast(mode==='separate'?S.sheets.length+' Exto SSM tabs exported':'Exto SSM exported');
 }
@@ -3256,7 +3485,7 @@ async function exportSSMXlsx(){
     const wb=XLSX.utils.book_new(),used=new Set();
     if(mode==='separate')S.sheets.forEach(sh=>addSsm3Sheet(wb,'SSM-'+sh.sheetName,sh.ssmRows,used));
     else addSsm3Sheet(wb,'SSM',S.ssmCombined,used);
-    addReviewSheet(wb,used);addCompareSheet(wb,used);
+    addReviewSheet(wb,used);addPlacementReviewSheet(wb,used);addCompareSheet(wb,used);
     downloadBlob('ssm-export.xlsx',wbBlob(wb));
   }))toast(mode==='separate'?S.sheets.length+' SSM tabs exported':'SSM exported');
 }
@@ -3275,8 +3504,46 @@ function exportOutlineTxt(){
 }
 
 /* ---- detail drawer ---- */
+function openPlacementDrawer(issueId){
+  const issue=S.placements.find(item=>item.id===issueId&&!item.resolved);if(!issue)return;
+  const expected=placementExpectedParentRole(issue.branchName),all=placementCandidates(issue,'');
+  let selected=S.nodeById.get(issue._selectedNodeId)||all.find(item=>tagKey(item.node.name)===tagKey(issue.suggestedParent))?.node||null;
+  $('#drawer').setAttribute('aria-label','Hierarchy placement review');
+  $('#drawerTitle').innerHTML=`${ic('git-branch')}<span>${esc(issue.branchName)}</span>`;
+  const field=(label,value)=>`<div class="dfield"><div class="dlabel">${esc(label)}</div><div class="dval ${value?'':'empty'}">${esc(value||'—')}</div></div>`;
+  $('#drawerBody').innerHTML=`
+    ${field('Status',issue.status==='suggested'?'Auto-placed · review recommended':'Needs a parent')}
+    ${field('Source',issue.source)}${field('Reason',issue.reason)}
+    ${field('Original parent',issue.originalParent||issue.currentParent)}${field('Current parent',issue.currentParent)}
+    ${issue.suggestedParent?field('Suggested parent',issue.suggestedParent):''}
+    ${field('Branch size',(issue.node?rawSubtreeCount(issue.node):0)+' descendants')}
+    <div class="dfield"><div class="dlabel">Choose a ${esc(expected||'valid')} parent</div>
+      <div class="search placement-search">${ic('search')}<input id="placementParentSearch" type="text" placeholder="Search hierarchy parents…" autocomplete="off" spellcheck="false"></div>
+      <div class="candidate-list" id="placementCandidates"></div>
+      <div class="placement-preview" id="placementPreview" hidden></div>
+    </div>
+    <div class="placement-actions">
+      ${issue.status==='suggested'?`<button class="btn" id="acceptPlacement">${ic('check')}Accept placement</button>`:''}
+      ${S.lastPlacementMove?`<button class="btn ghost" id="drawerPlacementUndo">${ic('rotate-ccw')}Undo</button>`:''}
+      <button class="btn primary spacer" id="movePlacement" disabled>${ic('git-branch')}Move branch</button>
+    </div>`;
+  const list=$('#placementCandidates'),preview=$('#placementPreview'),move=$('#movePlacement'),search=$('#placementParentSearch');
+  const paint=()=>{
+    const candidates=placementCandidates(issue,search.value);
+    list.innerHTML=candidates.length?candidates.map(item=>`<button class="candidate ${selected&&selected.id===item.node.id?'on':''}" data-parent="${item.node.id}">${ic(selected&&selected.id===item.node.id?'circle-check':'corner-down-right')}<span class="candidate-main"><span class="candidate-name">${esc(item.node.name)}</span><span class="candidate-path">${esc(item.path.join(' / '))}</span></span></button>`).join('')
+      :`<div class="note info">${ic('info')}<div>No valid parents match this search.</div></div>`;
+    $$('#placementCandidates [data-parent]').forEach(btn=>btn.onclick=()=>{selected=S.nodeById.get(btn.dataset.parent);issue._selectedNodeId=selected&&selected.id;paint();});
+    if(selected){const path=[...nodePath(selected),issue.branchName].join(' / ');preview.hidden=false;preview.innerHTML=`Branch will move with all descendants:<code>${esc(path)}</code>`;move.disabled=false;}
+    else{preview.hidden=true;move.disabled=true;}
+  };
+  search.oninput=paint;move.onclick=()=>selected&&movePlacementBranch(issue.id,selected.id);
+  const accept=$('#acceptPlacement');if(accept)accept.onclick=()=>acceptPlacement(issue.id);
+  const undo=$('#drawerPlacementUndo');if(undo)undo.onclick=async()=>{closeDrawer();await undoPlacement();};
+  paint();$('#drawer').classList.add('show');
+}
 function openDetail(nodeId){
   const node=S.nodeById.get(nodeId);if(!node)return;
+  $('#drawer').setAttribute('aria-label','Equipment details');
   const nk=clean(node.name).toLowerCase();
   const d=S.depDetail.get(nk),ep=S.epDetail.get(nk);
   const pmd=node.pmdKey?S.pmdDetail.get(node.pmdKey):null,mel=melRecord(node.name);

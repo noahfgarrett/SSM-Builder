@@ -302,14 +302,15 @@ test('Equipment_List tabs auto-select and index MEL Equipment Tag and UPN values
 })
 
 test('MEL corrects LV transformer parents only when a four-character transformer candidate exists', () => {
-  assert.match(html, /function melRoleAfterFirstHyphen\(value,role\)/)
+  assert.match(html, /function equipmentRole\(value\)/)
+  assert.match(html, /function hasEquipmentRole\(value,role\)/)
   assert.match(html, /function melCorrectClosestParent\(equipment,parent\)/)
   assert.match(html, /function melMatchingTransformer\(equipment,current\)/)
   assert.match(html, /const expected=parent\.slice\(0,-4\)\+equip\.slice\(-4\),exact=melRecord\(expected\)/)
   assert.match(html, /const candidates=S\.melXfmBySuffix\.get\(suffix\)\|\|\[\]/)
-  assert.match(html, /if\(equip\.slice\(-4\)\.toLowerCase\(\)===current\.slice\(-4\)\.toLowerCase\(\)\)return current/)
-  assert.match(html, /function applyMelParentCorrections\(segs,loadDesc\)/)
-  assert.match(html, /segs=applyMelParentCorrections\(gisBusCut\(segs\),loadDesc\)/)
+  assert.match(html, /function melTransformerDecision\(equipment,parent\)/)
+  assert.match(html, /function applyMelParentCorrections\(segs,loadDesc,track\)/)
+  assert.match(html, /segs=applyMelParentCorrections\(gisBusCut\(segs\),loadDesc,true\)/)
   assert.match(html, /function melCorrectLoadRelation\(loadDesc,relation\)/)
   const value = runInNewContext(`${customScript}
     S.melByTag=new Map([
@@ -331,7 +332,7 @@ test('MEL corrects LV transformer parents only when a four-character transformer
     noCandidate: 'PLANT-XFMX372B',
     notLv: 'PLANT-XFMX372B',
     notXfm: 'PLANT-MTRX372B',
-    laterHyphen: 'PLANT-XFMX372B',
+    laterHyphen: 'PLANT-XFMX373B',
     path: ['ROOT', 'PLANT-XFMX373B', 'PLANT-LVXX373B'],
     loadPath: ['ROOT', 'PLANT-XFMX373B'],
     relation: { parent: 'PLANT-XFMX373B', dep: 'PLANT-XFMX373B', keepDuplicateDep: true },
@@ -341,10 +342,10 @@ test('MEL corrects LV transformer parents only when a four-character transformer
 
 test('MEL inserts missing transformer levels and moves complete mismatched LVS branches', () => {
   assert.match(html, /function melLvsDescendants\(transformer\)/)
-  assert.match(html, /if\(melRoleAfterFirstHyphen\(node\.name,'XFM'\)\)continue/)
-  assert.match(html, /if\(melRoleAfterFirstHyphen\(node\.name,'LVS'\)\)\{found\.push\(\{holder,key,node\}\);continue;\}/)
+  assert.match(html, /if\(hasEquipmentRole\(node\.name,'XFM'\)\)continue/)
+  assert.match(html, /if\(hasEquipmentRole\(node\.name,'LVS'\)\)\{found\.push\(\{holder,key,node\}\);continue;\}/)
   assert.match(html, /function repairMelTransformerBranches\(root\)/)
-  assert.match(html, /filter\(node=>melRoleAfterFirstHyphen\(node\.name,'XFM'\)\)/)
+  assert.match(html, /filter\(node=>hasEquipmentRole\(node\.name,'XFM'\)\)/)
   assert.match(html, /holder\.kids\.delete\(childKey\)/)
   assert.match(html, /target\.kids\.set\(child\.name,child\)/)
   assert.match(html, /function ssmAncestorByRole\(row,byEquipment,role\)/)
@@ -402,6 +403,74 @@ test('MEL inserts missing transformer levels and moves complete mismatched LVS b
       ['3F21-MTRY900A', '3F21-LVSY373B'],
     ],
   })
+})
+
+test('unanchored Cable Schedule chains are reviewed without becoming hierarchy roots', () => {
+  assert.match(html, /const relations=new Map\(\),seeds=new Set\(\),generated=new Set\(\),unresolved=\[\]/)
+  assert.match(html, /if\(cyclic\|\|!anchored\)\{unresolved\.push/)
+  assert.match(html, /if\(!anchor\)continue;/)
+  assert.doesNotMatch(html, /else\{target=ensureRawHierarchyChild\(root,chain\[chain\.length-1\]\)/)
+  const value = runInNewContext(`${customScript}
+    S.deps=new Map([['load-orphan','MISSING-PANEL']]);
+    const rows=[['602 Medium Voltage',''],['GIS-1','602 Medium Voltage'],['LOAD-ORPHAN','GIS-1','GIS-1',{keepDuplicateDep:true}]];
+    const plan=buildCableParentPlan(rows);
+    const load={name:'LOAD-ORPHAN',kids:new Map(),isId:true};
+    const gis={name:'GIS-1',kids:new Map([[load.name,load]]),isId:false};
+    const system={name:'602 Medium Voltage',kids:new Map([[gis.name,gis]]),isId:false};
+    const root={name:'__root__',kids:new Map([[system.name,system]])};
+    const moved=repairCableHierarchyParents(root,plan);
+    JSON.stringify({moved,seeds:[...plan.seeds],unresolved:plan.unresolved,roots:[...root.kids.keys()],gisKids:[...gis.kids.keys()]});
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), {
+    moved: 0,
+    seeds: [],
+    unresolved: [{
+      branchName: 'LOAD-ORPHAN', currentParent: 'GIS-1', suggestedParent: 'MISSING-PANEL', status: 'unplaced', source: 'Cable Schedule',
+      reason: 'Cable Schedule parent chain does not connect to the existing hierarchy', chain: ['LOAD-ORPHAN', 'MISSING-PANEL'],
+    }],
+    roots: ['602 Medium Voltage'],
+    gisKids: ['LOAD-ORPHAN'],
+  })
+})
+
+test('System roots and manual placement keep complete branches under valid role parents', () => {
+  assert.match(html, /const SYSTEM_NAMES=new Set\(\[tagKey\(GIS_PARENT\)\]\)/)
+  assert.match(html, /function enforceSystemRoots\(root,collect\)/)
+  assert.match(html, /function validPlacementParent\(issue,node\)/)
+  assert.match(html, /function moveRawNode\(root,node,target\)/)
+  assert.match(html, /function undoRawMove\(move\)/)
+  const value = runInNewContext(`${customScript}
+    S.placements=[];S._placementId=0;
+    const leaf={name:'MTR-CHILD',kids:new Map(),isId:true};
+    const lvs={name:'F15-PDU-LVSY373B',kids:new Map([[leaf.name,leaf]]),isId:true};
+    const xfm372={name:'F15-PDU-XFMY372B',kids:new Map([[lvs.name,lvs]]),isId:false};
+    const xfm373={name:'F15-PDU-XFMY373B',kids:new Map(),isId:false};
+    const gis={name:'F15-GIS-1',kids:new Map([[xfm372.name,xfm372],[xfm373.name,xfm373]]),isId:false};
+    const system={name:GIS_PARENT,kids:new Map([[gis.name,gis]]),isId:false};
+    const stray={name:'STRAY-TOP',kids:new Map(),isId:false};
+    const root={name:'__root__',kids:new Map([[system.name,system],[stray.name,stray]])};
+    enforceSystemRoots(root,true);
+    const roots=finalize(root),lvsNode=[...S.nodeById.values()].find(n=>n.name===lvs.name),xfmNode=[...S.nodeById.values()].find(n=>n.name===xfm373.name),gisNode=[...S.nodeById.values()].find(n=>n.name===gis.name);
+    const issue={node:lvs,branchName:lvs.name};
+    const validXfm=validPlacementParent(issue,xfmNode),invalidGis=validPlacementParent(issue,gisNode);
+    const move=moveRawNode(root,lvs,xfm373),rows=setBranchRegisterParent([[lvs.name,xfm372.name,xfm372.name]],lvs.name,xfm373.name);
+    const movedChildren=[...xfm373.kids.get(lvs.name).kids.keys()];undoRawMove(move);
+    JSON.stringify({roots:[...root.kids.keys()],placement:S.placements[0].branchName,validXfm,invalidGis,movedChildren,rows,restored:[...xfm372.kids.keys()]});
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), {
+    roots: ['602 Medium Voltage'], placement: 'STRAY-TOP', validXfm: true, invalidGis: false, movedChildren: ['MTR-CHILD'],
+    rows: [['F15-PDU-LVSY373B', 'F15-PDU-XFMY373B', 'F15-PDU-XFMY373B', { keepDuplicateDep: true }]], restored: ['F15-PDU-LVSY373B'],
+  })
+})
+
+test('Review separates cross-sheet tags from hierarchy placement work', () => {
+  assert.match(html, /Cross-Sheet Tag Review/)
+  assert.match(html, /Placement Review/)
+  assert.match(html, /data-review-mode="cross"/)
+  assert.match(html, /data-review-mode="placement"/)
+  assert.match(html, /function openPlacementDrawer\(issueId\)/)
+  assert.match(html, /data-placement="\$\{node\.placementId\}"/)
+  assert.match(html, /function addPlacementReviewSheet\(wb,used\)/)
 })
 
 test('MEL UPN values appear in hierarchy details and requested SSM columns', () => {
