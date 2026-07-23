@@ -1071,6 +1071,16 @@ test('comparison rows support difference filters and sortable columns', () => {
   assert.match(html, /S\.cmpSort=\(!s\|\|s\.col!==col\)\?\{col,dir:'asc'\}/)
 })
 
+test('comparison columns stay fixed while virtual rows scroll', () => {
+  assert.match(html, /\.dtable\.cmp\{table-layout:fixed;min-width:1000px;border-collapse:separate;border-spacing:0\}/)
+  assert.match(html, /\.dtable\.cmp thead tr\{height:34px\}/)
+  assert.match(html, /\.dtable\.cmp thead th\{height:34px\}/)
+  assert.match(html, /\.dtable\.cmp thead tr:first-child th\{z-index:3\}/)
+  assert.match(html, /\.dtable\.cmp thead tr:first-child th:not\(\[rowspan\]\)\{border-bottom:0\}/)
+  assert.match(html, /\.dtable\.cmp thead th\.sub\{top:34px/)
+  assert.match(html, /<table class="dtable cmp"><colgroup><col style="width:18%"><col style="width:14%"><col style="width:17%"><col style="width:17%"><col style="width:17%"><col style="width:17%"><\/colgroup>/)
+})
+
 test('review tab groups columns by their source system', () => {
   assert.match(html, /<table class="dtable review">/)
   assert.match(html, /<th colspan="3" class="source-head cable">/)

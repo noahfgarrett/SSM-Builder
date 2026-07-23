@@ -415,6 +415,11 @@ body.result-fullscreen{overflow:hidden}
 .dtable{border-collapse:collapse;width:100%;font-size:13px}
 .dtable th,.dtable td{text-align:left;padding:9px 13px;border-bottom:1px solid var(--border);vertical-align:top}
 .dtable thead th{position:sticky;top:0;z-index:2;background:var(--surface-2);font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--ink-3);font-weight:700;white-space:nowrap}
+.dtable.cmp{table-layout:fixed;min-width:1000px;border-collapse:separate;border-spacing:0}
+.dtable.cmp thead tr{height:34px}
+.dtable.cmp thead th{height:34px}
+.dtable.cmp thead tr:first-child th{z-index:3}
+.dtable.cmp thead tr:first-child th:not([rowspan]){border-bottom:0}
 .dtable.cmp thead th.sub{top:34px;font-size:10px}
 .dtable.review thead th.sub{top:44px;font-size:10px}
 .source-head{height:44px;padding:10px 13px 8px!important;background:linear-gradient(180deg,var(--surface),var(--surface-2))!important;border-bottom:none!important;z-index:3!important;text-align:center!important;vertical-align:bottom!important}
@@ -668,7 +673,7 @@ const NAT_COLLATOR=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'}
 const natCmp=(a,b)=>NAT_COLLATOR.compare(String(a),String(b));
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.32';
+const APP_VERSION = '1.1.33';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
@@ -676,6 +681,14 @@ let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 let updateModalDismissed=false;
 const CHANGELOG=[
+  {
+    version:'1.1.33',
+    date:'2026-07-23T18:41:09Z',
+    type:'fix',
+    stats:{fixes:2},
+    notes:`- Fixed Comparison columns shifting while scrolling large datasets
+- Fixed a gap between the grouped Comparison headers`
+  },
   {
     version:'1.1.32',
     date:'2026-07-23T18:23:53Z',
@@ -3715,7 +3728,7 @@ function renderComparePanel(){
       <span class="hint" id="cmpCnt"></span>
       <div class="search" style="margin-left:auto">${ic('search')}<input id="cq" type="text" placeholder="Find equipment…" value="${esc(S.cmpSearch)}" autocomplete="off"><button class="qx icon-btn ${S.cmpSearch?'show':''}" id="cqx" type="button" aria-label="Clear comparison filter">${ic('x')}</button></div>
     </div>
-    <div class="tablecard" id="cmpCard"><table class="dtable cmp"><thead><tr><th rowspan="2" class="sortable ${sc('equip')}" data-sort="equip">Equipment ID</th><th rowspan="2" class="sortable ${sc('status')}" data-sort="status">Status</th><th colspan="2">Closest Parent</th><th colspan="2">Dependency</th></tr><tr><th class="sortable sub ${sc('curParent')}" data-sort="curParent">Extracted</th><th class="sortable sub ${sc('wcParent')}" data-sort="wcParent">Working copy</th><th class="sortable sub ${sc('curDep')}" data-sort="curDep">Extracted</th><th class="sortable sub ${sc('wcDep')}" data-sort="wcDep">Working copy</th></tr></thead><tbody id="cmpBody"></tbody></table></div>`;
+    <div class="tablecard" id="cmpCard"><table class="dtable cmp"><colgroup><col style="width:18%"><col style="width:14%"><col style="width:17%"><col style="width:17%"><col style="width:17%"><col style="width:17%"></colgroup><thead><tr><th rowspan="2" class="sortable ${sc('equip')}" data-sort="equip">Equipment ID</th><th rowspan="2" class="sortable ${sc('status')}" data-sort="status">Status</th><th colspan="2">Closest Parent</th><th colspan="2">Dependency</th></tr><tr><th class="sortable sub ${sc('curParent')}" data-sort="curParent">Extracted</th><th class="sortable sub ${sc('wcParent')}" data-sort="wcParent">Working copy</th><th class="sortable sub ${sc('curDep')}" data-sort="curDep">Extracted</th><th class="sortable sub ${sc('wcDep')}" data-sort="wcDep">Working copy</th></tr></thead><tbody id="cmpBody"></tbody></table></div>`;
   wireComparePanel();
   refreshCompare();
 }
