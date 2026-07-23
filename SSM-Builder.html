@@ -661,7 +661,7 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.28';
+const APP_VERSION = '1.1.29';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
@@ -669,6 +669,14 @@ let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 let updateModalDismissed=false;
 const CHANGELOG=[
+  {
+    version:'1.1.29',
+    date:'2026-07-23T16:41:41Z',
+    type:'fix',
+    stats:{fixes:1,improvements:1},
+    notes:`- Fixed hierarchy builds hanging near 77% with large MEL datasets
+- Improved MEL tag matching performance for large imports`
+  },
   {
     version:'1.1.28',
     date:'2026-07-23T16:30:40Z',
@@ -1227,7 +1235,7 @@ const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:n
   showSpares:true,showSpaces:true,showDeps:true,showPmdMatches:true,deps:new Map(),depDetail:new Map(),hasCable:false,
   cableStruckTags:new Set(),
   pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdSuffixMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
-  melRows:[],melByTag:new Map(),melByNorm:new Map(),melBySuffix:new Map(),melLookupCache:new Map(),melXfmBySuffix:new Map(),melParentChecks:new Map(),
+  melRows:[],melByTag:new Map(),melByNorm:new Map(),melBySuffix:new Map(),melByGram:new Map(),melLookupCache:new Map(),melXfmBySuffix:new Map(),melParentChecks:new Map(),
   epDetail:new Map(),epNameSet:new Set(),review:[],placements:[],reviewMode:'cross',placementRevision:0,placementQuery:'',lastPlacementMove:null,
   workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
   cmpFilter:'all',cmpSearch:'',cmpDiff:'all',cmpSort:null,revSearch:'',revSort:null,revMinPct:null,showStats:true,
@@ -2016,7 +2024,7 @@ function updateSelInfo(){
 
 /* ---- build ---- */
 async function buildMel(tick){
-  S.melRows=[];S.melByTag=new Map();S.melByNorm=new Map();S.melBySuffix=new Map();S.melLookupCache=new Map();S.melXfmBySuffix=new Map();
+  S.melRows=[];S.melByTag=new Map();S.melByNorm=new Map();S.melBySuffix=new Map();S.melByGram=new Map();S.melLookupCache=new Map();S.melXfmBySuffix=new Map();
   for(const key of S.melSel){
     const [fid]=key.split(KEYSEP);if(!fileById(fid))continue;
     const mi=melInfo(key);if(!mi)continue;
@@ -2029,6 +2037,7 @@ async function buildMel(tick){
       if(existing){if(!existing.upn&&upn)existing.upn=upn;if(!existing.building&&building)existing.building=building;if(!existing.systemParent&&systemParent)existing.systemParent=systemParent;continue;}
       const rec={tag,upn,building,systemParent};S.melRows.push(rec);S.melByTag.set(keyTag,rec);
       const normKey=normSep(tag);if(normKey&&!S.melByNorm.has(normKey))S.melByNorm.set(normKey,rec);
+      indexMelLookupRecord(rec);
       const suffixKeys=new Set([normSep(stripPowerVariant(tag))]),separators=[...stripPowerVariant(tag).matchAll(/[\s\-_\/.]+/g)];
       for(const match of separators){const suffixKey=normSep(stripPowerVariant(tag).slice(match.index+match[0].length));if(suffixKey)suffixKeys.add(suffixKey);}
       for(const suffixKey of suffixKeys){if(!suffixKey)continue;const list=S.melBySuffix.get(suffixKey)||[];list.push(rec);S.melBySuffix.set(suffixKey,list);}
@@ -2037,6 +2046,32 @@ async function buildMel(tick){
   }
 }
 function melRecord(value){return S.melByTag.get(tagKey(value))||S.melByNorm.get(normSep(cleanTag(value)))||null;}
+const MEL_LOOKUP_GRAM_SIZE=3;
+function melLookupGrams(value){
+  const key=normSep(stripPowerVariant(value)),grams=[],seen=new Set();
+  for(let i=0;i<=key.length-MEL_LOOKUP_GRAM_SIZE;i++){
+    const gram=key.slice(i,i+MEL_LOOKUP_GRAM_SIZE);
+    if(!seen.has(gram)){seen.add(gram);grams.push(gram);}
+  }
+  return grams;
+}
+function indexMelLookupRecord(rec){
+  for(const gram of melLookupGrams(rec.tag)){
+    const list=S.melByGram.get(gram)||[];list.push(rec);S.melByGram.set(gram,list);
+  }
+}
+function melLookupSearchRows(value){
+  const key=normSep(stripPowerVariant(value));
+  if(!S.melByGram.size)return S.melRows;
+  if(key.length<MEL_LOOKUP_GRAM_SIZE)return S.melRows;
+  let smallest=null;
+  for(const gram of melLookupGrams(key)){
+    const matches=S.melByGram.get(gram);
+    if(!matches)return [];
+    if(!smallest||matches.length<smallest.length)smallest=matches;
+  }
+  return smallest||[];
+}
 function melTagLookup(value){
   const exact=melRecord(value);if(exact)return {record:exact,match:'exact',candidates:[exact]};
   const key=normSep(stripPowerVariant(value));if(!key)return {record:null,match:'none',candidates:[]};
@@ -2044,7 +2079,7 @@ function melTagLookup(value){
   let candidates=[...new Set((S.melBySuffix.get(key)||[]))],match='contained';
   if(!candidates.length){
     const normalized=[],contained=[];
-    for(const rec of S.melRows){
+    for(const rec of melLookupSearchRows(key)){
       const recKey=normSep(stripPowerVariant(rec.tag));if(!recKey)continue;
       if(recKey===key)normalized.push(rec);else if(recKey.endsWith(key))candidates.push(rec);else if(recKey.includes(key))contained.push(rec);
     }
@@ -2080,7 +2115,7 @@ function stripPowerVariant(value){return cleanTag(value).replace(/[_-](?:NPS|CPS
 function melContainingRecord(value){
   const key=normSep(stripPowerVariant(value));if(!key)return null;
   let contained=null;
-  for(const rec of S.melRows){
+  for(const rec of melLookupSearchRows(key)){
     const recKey=normSep(rec.tag);
     if(recKey===key||recKey.endsWith(key))return rec;
     if(!contained&&recKey.includes(key))contained=rec;

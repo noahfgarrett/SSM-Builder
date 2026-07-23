@@ -327,7 +327,7 @@ test('Cable Schedule chains replace duplicate parents and add missing hierarchy 
 
 test('Equipment_List tabs auto-select and index MEL Equipment Tag and UPN values', () => {
   assert.match(html, /melSel:new Set\(\)/)
-  assert.match(html, /melRows:\[\],melByTag:new Map\(\),melByNorm:new Map\(\),melBySuffix:new Map\(\),melLookupCache:new Map\(\),melXfmBySuffix:new Map\(\)/)
+  assert.match(html, /melRows:\[\],melByTag:new Map\(\),melByNorm:new Map\(\),melBySuffix:new Map\(\),melByGram:new Map\(\),melLookupCache:new Map\(\),melXfmBySuffix:new Map\(\)/)
   assert.match(html, /const MEL_SHEET_NAME='equipmentlist'/)
   assert.match(html, /function isMelSheet\(key\)/)
   assert.match(html, /function detectMel\(headers\)/)
@@ -358,6 +358,36 @@ test('Equipment_List tabs auto-select and index MEL Equipment Tag and UPN values
     true,
     false,
   ])
+})
+
+test('MEL contained-tag lookups use indexed candidates instead of rescanning every row', () => {
+  assert.match(html, /const MEL_LOOKUP_GRAM_SIZE=3/)
+  assert.match(html, /function indexMelLookupRecord\(rec\)/)
+  assert.match(html, /function melLookupSearchRows\(value\)/)
+  assert.match(html, /if\(!matches\)return \[\]/)
+  assert.match(html, /for\(const rec of melLookupSearchRows\(key\)\)/)
+  const value = runInNewContext(`${customScript}
+    S.melRows=[];S.melByTag=new Map();S.melByNorm=new Map();S.melBySuffix=new Map();S.melByGram=new Map();S.melLookupCache=new Map();
+    for(let i=0;i<2000;i++){
+      const rec={tag:'BLDG-EQUIPMENT-'+String(i).padStart(5,'0'),upn:'133',systemParent:''};
+      S.melRows.push(rec);S.melByTag.set(tagKey(rec.tag),rec);S.melByNorm.set(normSep(rec.tag),rec);indexMelLookupRecord(rec);
+    }
+    S.melRows={*[Symbol.iterator](){throw new Error('indexed lookup fell back to a full MEL scan');}};
+    const contained=melTagLookup('EQUIPMENT-01337'),missing=melTagLookup('NOT-PRESENT-99999');
+    JSON.stringify({
+      contained:contained.record&&contained.record.tag,
+      containedCandidates:contained.candidates.length,
+      missing:missing.record,
+      missingCandidates:missing.candidates.length,
+      grams:S.melByGram.size
+    });
+  `, { console, setTimeout, clearTimeout })
+  const result = JSON.parse(value)
+  assert.equal(result.contained, 'BLDG-EQUIPMENT-01337')
+  assert.equal(result.containedCandidates, 1)
+  assert.equal(result.missing, null)
+  assert.equal(result.missingCandidates, 0)
+  assert.ok(result.grams > 0)
 })
 
 test('MEL UPN checks evaluate every extracted Comparison Equipment ID', () => {
