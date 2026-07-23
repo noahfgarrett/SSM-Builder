@@ -661,7 +661,7 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.29';
+const APP_VERSION = '1.1.30';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
@@ -669,6 +669,14 @@ let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 let updateModalDismissed=false;
 const CHANGELOG=[
+  {
+    version:'1.1.30',
+    date:'2026-07-23T17:26:55Z',
+    type:'fix',
+    stats:{fixes:1,improvements:1},
+    notes:`- Fixed hierarchy builds hanging during MEL UPN and MAH parent corrections
+- Improved build progress to identify each reconciliation stage`
+  },
   {
     version:'1.1.29',
     date:'2026-07-23T16:41:41Z',
@@ -2192,25 +2200,43 @@ function mahClosestParent(value){
   return /-MAH/i.test(parent)?parent:'';
 }
 function repairMahHierarchyParents(root){
-  let repaired=0;
+  let repaired=0;const kidIndexes=new WeakMap();
+  const kidsByName=node=>{
+    let index=kidIndexes.get(node);
+    if(!index){index=new Map();for(const child of node.kids.values())if(!index.has(tagKey(child.name)))index.set(tagKey(child.name),child);kidIndexes.set(node,index);}
+    return index;
+  };
+  const merge=(target,source)=>{
+    target.isId=!!(target.isId||source.isId);target.isLoad=!!(target.isLoad||source.isLoad);target.isInstrument=!!(target.isInstrument||source.isInstrument);
+    for(const field of ['loadDependency','dependencyOverride','description','pmdKey','pmdPanel','pmdBuilding'])if(!target[field]&&source[field])target[field]=source[field];
+    const index=kidsByName(target);
+    for(const child of source.kids.values()){
+      const key=tagKey(child.name),existing=index.get(key);
+      if(existing&&existing!==child)merge(existing,child);
+      else{target.kids.set(child.name,child);index.set(key,child);}
+    }
+    return target;
+  };
   const walk=holder=>{
-    for(const [key,node] of [...holder.kids.entries()]){
-      const full=cleanTag(node.name),parent=mahClosestParent(full);let next=node;
+    const entries=[...holder.kids.entries()],canonical=new Map();
+    for(const [,node] of entries)if(!mahClosestParent(node.name)&&!canonical.has(tagKey(node.name)))canonical.set(tagKey(node.name),node);
+    for(const [key,node] of entries){
+      const full=cleanTag(node.name),parent=mahClosestParent(full);
       if(parent&&node.kids.size&&tagKey(parent)!==tagKey(full)){
         const childNames=[...node.kids.values()].map(child=>child.name);
         for(const child of node.kids.values())child.dependencyOverride=full;
         holder.kids.delete(key);
-        const existing=rawKidEntry(holder.kids,parent);
-        if(existing)next=mergeRawHierarchyNode(existing[1],node);
-        else{node.name=parent;holder.kids.set(parent,node);}
+        const parentKey=tagKey(parent),existing=canonical.get(parentKey);
+        const target=existing&&existing!==node?merge(existing,node):node;
+        if(!existing){node.name=parent;holder.kids.set(parent,node);canonical.set(parentKey,node);}
         for(const childName of childNames){
-          const child=rawKidEntry(next.kids,childName);
-          if(child)child[1].dependencyOverride=full;
+          const child=kidsByName(target).get(tagKey(childName));
+          if(child)child.dependencyOverride=full;
         }
         repaired++;
       }
-      walk(next);
     }
+    for(const node of holder.kids.values())walk(node);
   };
   walk(root);return repaired;
 }
@@ -2245,10 +2271,76 @@ function rawOccurrences(root,value){
   const walk=(holder,path)=>{for(const [key,node] of holder.kids){const next=[...path,node.name];if(tagKey(node.name)===wanted)found.push({holder,key,node,path:next});walk(node,next);}};
   walk(root,[]);return found;
 }
+function buildRawHierarchyIndex(root){
+  const index={root,byName:new Map(),location:new Map()};
+  const walk=holder=>{
+    for(const [key,node] of holder.kids){
+      const nameKey=tagKey(node.name),matches=index.byName.get(nameKey)||[];
+      matches.push(node);index.byName.set(nameKey,matches);index.location.set(node,{holder,key});walk(node);
+    }
+  };
+  walk(root);return index;
+}
+function indexedRawKidEntry(index,holder,value){
+  for(const node of index.byName.get(tagKey(value))||[]){
+    const location=index.location.get(node);
+    if(location&&location.holder===holder)return [location.key,node];
+  }
+  return null;
+}
+function indexedRawContains(index,root,target){
+  let node=target;const seen=new Set();
+  while(node&&!seen.has(node)){
+    if(node===root)return true;
+    if(node===index.root)return false;
+    seen.add(node);const location=index.location.get(node);node=location&&location.holder;
+  }
+  return false;
+}
+function indexedRawPath(index,node){
+  const path=[],seen=new Set();
+  while(node&&node!==index.root&&!seen.has(node)){
+    seen.add(node);path.push(node.name);const location=index.location.get(node);node=location&&location.holder;
+  }
+  return path.reverse();
+}
+function indexedRawOccurrences(index,value,includePath){
+  const found=[];
+  for(const node of index.byName.get(tagKey(value))||[]){
+    const location=index.location.get(node);if(!location)continue;
+    found.push({holder:location.holder,key:location.key,node,path:includePath?indexedRawPath(index,node):[]});
+  }
+  return found;
+}
+function indexedRawNode(index,value,blocked){
+  for(const node of index.byName.get(tagKey(value))||[]){
+    if(!index.location.has(node))continue;
+    if(blocked&&(node===blocked||indexedRawContains(index,blocked,node)))continue;
+    return node;
+  }
+  return null;
+}
+function indexRawHierarchyNode(index,holder,key,node){
+  const nameKey=tagKey(node.name),matches=index.byName.get(nameKey)||[];
+  if(!matches.includes(node)){matches.push(node);index.byName.set(nameKey,matches);}
+  index.location.set(node,{holder,key});
+}
+function mergeRawHierarchyNodeIndexed(index,target,source){
+  target.isId=!!(target.isId||source.isId);target.isLoad=!!(target.isLoad||source.isLoad);target.isInstrument=!!(target.isInstrument||source.isInstrument);
+  for(const field of ['loadDependency','dependencyOverride','description','pmdKey','pmdPanel','pmdBuilding'])if(!target[field]&&source[field])target[field]=source[field];
+  for(const child of source.kids.values()){
+    const existing=indexedRawKidEntry(index,target,child.name);
+    if(existing&&existing[1]!==child)mergeRawHierarchyNodeIndexed(index,existing[1],child);
+    else{target.kids.set(child.name,child);index.location.set(child,{holder:target,key:child.name});}
+  }
+  index.location.delete(source);return target;
+}
 function bindMelPlacementSeeds(root){
+  const index=buildRawHierarchyIndex(root);
   for(const seed of S._melPlacementSeeds.values()){
     const expectedParent=seed.status==='suggested'?seed.suggestedParent:seed.currentParent;
-    const occurrence=rawOccurrences(root,seed.branchName).find(hit=>tagKey(hit.holder.name)===tagKey(expectedParent))||rawOccurrences(root,seed.branchName)[0];
+    const occurrences=indexedRawOccurrences(index,seed.branchName,true);
+    const occurrence=occurrences.find(hit=>tagKey(hit.holder.name)===tagKey(expectedParent))||occurrences[0];
     registerPlacement({...seed,node:occurrence&&occurrence.node,path:occurrence?occurrence.path:[],
       currentParent:occurrence?occurrence.holder.name:seed.currentParent});
   }
@@ -2402,8 +2494,10 @@ function buildCableParentPlan(rows){
   return {relations,seeds,generated,unresolved};
 }
 function registerCablePlacementIssues(root,plan){
+  const index=buildRawHierarchyIndex(root);
   for(const issue of (plan&&plan.unresolved)||[]){
-    const occurrence=rawOccurrences(root,issue.branchName).find(hit=>tagKey(hit.holder.name)===tagKey(issue.currentParent))||rawOccurrences(root,issue.branchName)[0];
+    const occurrences=indexedRawOccurrences(index,issue.branchName,true);
+    const occurrence=occurrences.find(hit=>tagKey(hit.holder.name)===tagKey(issue.currentParent))||occurrences[0];
     registerPlacement({...issue,node:occurrence&&occurrence.node,path:occurrence?occurrence.path:[]});
   }
 }
@@ -2544,37 +2638,44 @@ function buildMelSystemParentPlan(rows){
 }
 function repairMelSystemParentHierarchy(root,plan){
   if(!plan||!plan.corrections.size)return 0;
-  let moved=0;
+  const index=buildRawHierarchyIndex(root);let moved=0;
   for(const [correctionKey,correction] of plan.corrections){
-    const occurrences=rawOccurrences(root,correction.equip);
+    const occurrences=indexedRawOccurrences(index,correction.equip,false);
     if(!occurrences.length){
       addMelSystemParentWarning(plan,{equip:correction.equip,currentParent:correction.currentParent,missingField:'Hierarchy branch',
         reason:`UPNs differ, but ${correction.equip} was not available for a safe hierarchy move`});
       plan.corrections.delete(correctionKey);continue;
     }
     const basis=occurrences.find(hit=>tagKey(hit.holder.name)===tagKey(correction.currentParent))||occurrences[0];
-    const currentParentNode=tagKey(basis.holder.name)===tagKey(correction.currentParent)?basis.holder:findRawHierarchyNode(root,correction.currentParent,basis.node);
-    const parentLocation=currentParentNode&&findRawHolderByNode(root,currentParentNode),container=parentLocation?parentLocation.holder:root;
-    let targetEntry=rawKidEntry(container.kids,correction.newParent),target=targetEntry&&targetEntry[1],targetCreated=false;
-    if(!target)target=findRawHierarchyNode(root,correction.newParent,basis.node);
-    if(!target){target={name:correction.newParent,kids:new Map(),isId:false};container.kids.set(correction.newParent,target);targetCreated=true;}
-    if(rawContains(basis.node,target)){
+    const currentParentNode=tagKey(basis.holder.name)===tagKey(correction.currentParent)?basis.holder:indexedRawNode(index,correction.currentParent,basis.node);
+    const parentLocation=currentParentNode&&index.location.get(currentParentNode),container=parentLocation?parentLocation.holder:root;
+    let targetEntry=indexedRawKidEntry(index,container,correction.newParent),target=targetEntry&&targetEntry[1],targetCreated=false;
+    if(!target)target=indexedRawNode(index,correction.newParent,basis.node);
+    if(!target){
+      target={name:correction.newParent,kids:new Map(),isId:false};container.kids.set(correction.newParent,target);
+      indexRawHierarchyNode(index,container,correction.newParent,target);targetCreated=true;
+    }
+    if(indexedRawContains(index,basis.node,target)){
       addMelSystemParentWarning(plan,{equip:correction.equip,currentParent:correction.currentParent,missingField:'Valid System Parent placement',
         reason:`UPNs differ, but moving ${correction.equip} under ${correction.newParent} would create a hierarchy cycle`});
       plan.corrections.delete(correctionKey);continue;
     }
     let applied=false;
     for(const occurrence of occurrences){
-      const live=findRawHolderByNode(root,occurrence.node);if(!live||occurrence.node===target||rawContains(occurrence.node,target))continue;
+      const live=index.location.get(occurrence.node);if(!live||occurrence.node===target||indexedRawContains(index,occurrence.node,target))continue;
       if(live.holder===target){occurrence.node.dependencyOverride=correction.currentParent;applied=true;continue;}
       live.holder.kids.delete(live.key);
-      const duplicate=rawKidEntry(target.kids,occurrence.node.name),movedNode=duplicate&&duplicate[1]!==occurrence.node?mergeRawHierarchyNode(duplicate[1],occurrence.node):occurrence.node;
+      const duplicate=indexedRawKidEntry(index,target,occurrence.node.name);
+      const movedNode=duplicate&&duplicate[1]!==occurrence.node?mergeRawHierarchyNodeIndexed(index,duplicate[1],occurrence.node):occurrence.node;
       movedNode.dependencyOverride=correction.currentParent;
-      if(!duplicate)target.kids.set(occurrence.node.name,occurrence.node);
+      if(!duplicate){target.kids.set(occurrence.node.name,occurrence.node);index.location.set(occurrence.node,{holder:target,key:occurrence.node.name});}
       moved++;applied=true;
     }
     if(!applied){
-      if(targetCreated&&!target.kids.size){const created=rawKidEntry(container.kids,correction.newParent);if(created&&created[1]===target)container.kids.delete(created[0]);}
+      if(targetCreated&&!target.kids.size){
+        const created=indexedRawKidEntry(index,container,correction.newParent);
+        if(created&&created[1]===target){container.kids.delete(created[0]);index.location.delete(target);}
+      }
       addMelSystemParentWarning(plan,{equip:correction.equip,currentParent:correction.currentParent,missingField:'Valid System Parent placement',
         reason:`UPNs differ, but ${correction.equip} could not be moved under ${correction.newParent} safely`});
       plan.corrections.delete(correctionKey);
@@ -2599,8 +2700,9 @@ function repairMelSystemParentSsmRows(rows,plan){
   return out;
 }
 function registerMelSystemParentIssues(root,plan){
+  const index=buildRawHierarchyIndex(root);
   for(const warning of (plan&&plan.warnings)||[]){
-    const occurrences=rawOccurrences(root,warning.equip),occurrence=occurrences.find(hit=>tagKey(hit.holder.name)===tagKey(warning.currentParent))||occurrences[0];
+    const occurrences=indexedRawOccurrences(index,warning.equip,true),occurrence=occurrences.find(hit=>tagKey(hit.holder.name)===tagKey(warning.currentParent))||occurrences[0];
     registerPlacement({node:occurrence&&occurrence.node,branchName:warning.equip,originalParent:warning.currentParent,currentParent:occurrence?occurrence.holder.name:warning.currentParent,
       suggestedParent:'',status:'missing-data',source:'Master Equipment List',reason:warning.reason,missingField:warning.missingField,path:occurrence?occurrence.path:[]});
   }
@@ -2731,7 +2833,7 @@ async function buildHierarchy(){
     let melRows=0;for(const k of S.melSel)if(melInfo(k)){melRows+=Math.max(0,getAoa(k).aoa.length-melInfo(k).headerRow-1);}
     let hierRows=0;for(const k of keys)hierRows+=rowsIn(k);
     const total=Math.max(1,cableRows+pmdRows+melRows+hierRows*2);let done=0;
-    const READ_LO=.03,READ_HI=.78;
+    const READ_LO=.03,READ_HI=.74;
     const tick=async(label)=>{done++;await maybeYield(report,READ_LO+(READ_HI-READ_LO)*(done/total),label);};
 
     report(.02,'Reading source data');await raf();
@@ -2783,41 +2885,58 @@ async function buildHierarchy(){
       }
       sheets.push({key,sheetName,fileName:fileById(fid).name,_sMap:sMap,ssmRows}); // tree built lazily on export
     }
-    report(.79,'Repairing MEL transformer branches');await raf();
-    repairMelTransformerBranches(combined);for(const sh of sheets)repairMelTransformerBranches(sh._sMap);
-    report(.795,'Applying MEL parent rules');await raf();
-    repairEasyPowerHierarchyParents(combined);for(const sh of sheets)repairEasyPowerHierarchyParents(sh._sMap);
-    report(.798,'Applying Cable Schedule parent chains');await raf();
+    const sheetPhase=async(start,end,label,index)=>{
+      await maybeYield(report,start+(end-start)*((index+1)/Math.max(1,sheets.length)),`${label} · Tab ${index+1} of ${sheets.length}`);
+    };
+    report(.75,'Repairing MEL transformer branches');await raf();
+    repairMelTransformerBranches(combined);
+    for(let i=0;i<sheets.length;i++){repairMelTransformerBranches(sheets[i]._sMap);await sheetPhase(.75,.77,'Repairing MEL transformer branches',i);}
+    report(.77,'Applying MEL synthetic parent rules');await raf();
+    repairEasyPowerHierarchyParents(combined);
+    for(let i=0;i<sheets.length;i++){repairEasyPowerHierarchyParents(sheets[i]._sMap);await sheetPhase(.77,.79,'Applying MEL synthetic parent rules',i);}
+    report(.79,'Applying Cable Schedule parent chains');await raf();
     const preparedCombined=repairEasyPowerSsmRows(repairMelSsmRows(ssmCombined)),combinedCablePlan=buildCableParentPlan(preparedCombined);
     registerCablePlacementIssues(combined,combinedCablePlan);
     repairCableHierarchyParents(combined,combinedCablePlan);
     let finalCombinedRows=repairCableSsmRows(preparedCombined,combinedCablePlan);
+    for(let i=0;i<sheets.length;i++){
+      const sh=sheets[i],prepared=repairEasyPowerSsmRows(repairMelSsmRows(sh.ssmRows)),plan=buildCableParentPlan(prepared);
+      repairCableHierarchyParents(sh._sMap,plan);sh.ssmRows=repairCableSsmRows(prepared,plan);
+      await sheetPhase(.79,.81,'Applying Cable Schedule parent chains',i);
+    }
+    report(.81,'Applying MEL UPN parent rules');await raf();
     const combinedMelSystemPlan=buildMelSystemParentPlan(finalCombinedRows);
     repairMelSystemParentHierarchy(combined,combinedMelSystemPlan);
     S.melParentChecks=combinedMelSystemPlan.checks;
     finalCombinedRows=repairMelSystemParentSsmRows(finalCombinedRows,combinedMelSystemPlan);
-    repairMahHierarchyParents(combined);finalCombinedRows=repairMahSsmRows(finalCombinedRows);
-    for(const sh of sheets){
-      const prepared=repairEasyPowerSsmRows(repairMelSsmRows(sh.ssmRows)),plan=buildCableParentPlan(prepared);
-      repairCableHierarchyParents(sh._sMap,plan);sh.ssmRows=repairCableSsmRows(prepared,plan);
+    for(let i=0;i<sheets.length;i++){
+      const sh=sheets[i];
       const melSystemPlan=buildMelSystemParentPlan(sh.ssmRows);
       repairMelSystemParentHierarchy(sh._sMap,melSystemPlan);sh.ssmRows=repairMelSystemParentSsmRows(sh.ssmRows,melSystemPlan);
-      repairMahHierarchyParents(sh._sMap);sh.ssmRows=repairMahSsmRows(sh.ssmRows);
+      await sheetPhase(.81,.83,'Applying MEL UPN parent rules',i);
     }
-    report(.80,'Linking PMD instruments');await raf();
+    report(.83,'Normalizing MAH parent tags');await raf();
+    repairMahHierarchyParents(combined);finalCombinedRows=repairMahSsmRows(finalCombinedRows);
+    for(let i=0;i<sheets.length;i++){
+      const sh=sheets[i];repairMahHierarchyParents(sh._sMap);sh.ssmRows=repairMahSsmRows(sh.ssmRows);
+      await sheetPhase(.83,.845,'Normalizing MAH parent tags',i);
+    }
+    report(.845,'Linking PMD instruments');await raf();
     const instrumentCount=attachPmdInstruments(combined);
-    for(const sh of sheets)_attachPmdInstruments(sh._sMap,null);
+    for(let i=0;i<sheets.length;i++){_attachPmdInstruments(sheets[i]._sMap,null);await sheetPhase(.845,.86,'Linking PMD instruments',i);}
+    report(.86,'Preparing placement review');await raf();
     bindMelPlacementSeeds(combined);
     registerMelSystemParentIssues(combined,combinedMelSystemPlan);
     enforceSystemRoots(combined,true);for(const sh of sheets)enforceSystemRoots(sh._sMap,false);
+    report(.87,'Preparing SSM registers');await raf();
     S.sheets=sheets;S.ssmCombined=uniqueSsmRows(appendPmdSsmRows(finalCombinedRows,true));
     for(const sh of S.sheets)sh.ssmRows=uniqueSsmRows(appendPmdSsmRows(sh.ssmRows,false));
-    report(.82,'Finalizing tree');await raf();
+    report(.88,'Finalizing tree');await raf();
     S.rawCombined=combined;S.roots=finalize(combined); // call last so nodeById matches the displayed combined tree
     // every equipment name in the Easy Power hierarchy (for cable cross-check)
-    report(.86,'Indexing equipment');await raf();
+    report(.90,'Indexing equipment');await raf();
     S.epNameSet=new Set();const collect=n=>{S.epNameSet.add(clean(n.name).toLowerCase());n.children.forEach(collect);};S.roots.forEach(collect);
-    if(S.hasCable){report(.88,'Cross-checking cable schedule');await raf();}
+    if(S.hasCable){report(.91,'Cross-checking cable schedule');await raf();}
     await buildReview(report);
     if(S.wcRows){report(.96,'Comparing working copy');await raf();await buildComparison(report);}
     S.stats=computeStats(S.roots);
@@ -2847,7 +2966,7 @@ async function buildReview(report){
     const {map,headerRow}=ci,{aoa}=getAoa(key);
     const loadC=map['Load Name (To)'],panelC=map['Panel (From)'],circC=map['Circuit_Number'];
     for(let i=headerRow+1;i<aoa.length;i++){
-      cdone++;if(report)await maybeYield(report,.88+.06*(cdone/totalCable),'Cross-checking cable schedule');
+      cdone++;if(report)await maybeYield(report,.91+.04*(cdone/totalCable),'Cross-checking cable schedule');
       const load=cleanTag(aoa[i][loadC]);if(!load)continue;
       const lk=load.toLowerCase();
       if(S.epNameSet.has(lk))continue;          // exact match — fine

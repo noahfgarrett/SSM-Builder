@@ -506,6 +506,36 @@ test('MEL UPN checks evaluate every extracted Comparison Equipment ID', () => {
   })
 })
 
+test('MEL UPN hierarchy corrections use indexed branch locations at large scale', () => {
+  assert.match(html, /function buildRawHierarchyIndex\(root\)/)
+  assert.match(html, /function indexedRawOccurrences\(index,value,includePath\)/)
+  assert.match(html, /function mergeRawHierarchyNodeIndexed\(index,target,source\)/)
+  assert.match(html, /const index=buildRawHierarchyIndex\(root\);let moved=0/)
+  assert.match(html, /const occurrences=indexedRawOccurrences\(index,correction\.equip,false\)/)
+  assert.match(html, /const live=index\.location\.get\(occurrence\.node\)/)
+  assert.match(html, /Applying MEL UPN parent rules/)
+  assert.match(html, /Normalizing MAH parent tags/)
+  const value = runInNewContext(`${customScript}
+    const count=2000,oldParent={name:'OLD-PARENT',kids:new Map(),isId:false};
+    const root={name:'__root__',kids:new Map([[oldParent.name,oldParent]])};
+    const corrections=new Map(),plan={corrections,warnings:[],checks:new Map(),_warningKeys:new Set()};
+    for(let i=0;i<count;i++){
+      const suffix=String(i).padStart(5,'0'),equip='EQUIPMENT-'+suffix;
+      oldParent.kids.set(equip,{name:equip,kids:new Map(),isId:true});
+      corrections.set(tagKey(equip),{equip,currentParent:'OLD-PARENT',newParent:'NEW-PARENT-'+suffix,sourceParent:'',equipmentUpn:'100',parentUpn:'200'});
+    }
+    const started=Date.now(),moved=repairMelSystemParentHierarchy(root,plan),elapsed=Date.now()-started;
+    const sample=root.kids.get('NEW-PARENT-01999').kids.get('EQUIPMENT-01999');
+    JSON.stringify({moved,elapsed,oldChildren:oldParent.kids.size,rootChildren:root.kids.size,sampleDependency:sample.dependencyOverride});
+  `, { console, setTimeout, clearTimeout })
+  const result = JSON.parse(value)
+  assert.equal(result.moved, 2000)
+  assert.equal(result.oldChildren, 0)
+  assert.equal(result.rootChildren, 2001)
+  assert.equal(result.sampleDependency, 'OLD-PARENT')
+  assert.ok(result.elapsed < 750, `indexed hierarchy moves took ${result.elapsed}ms`)
+})
+
 test('MEL UPN correction resolves Equipment IDs contained in row-2 MEL tags', () => {
   const value = runInNewContext(`${customScript}
     S.melRows=[
@@ -1225,6 +1255,33 @@ test('MAH suffix variants become dependencies beneath the base MAH parent', () =
       { equip: 'UNCHANGED', parent: 'OTHER-PARENT', dep: 'OTHER-DEPENDENCY', keepDuplicateDep: false },
     ],
   })
+})
+
+test('MAH normalization merges large variant groups without repeated child scans', () => {
+  assert.match(html, /let repaired=0;const kidIndexes=new WeakMap\(\)/)
+  assert.match(html, /const kidsByName=node=>/)
+  assert.match(html, /const merge=\(target,source\)=>/)
+  assert.match(html, /for\(const node of holder\.kids\.values\(\)\)walk\(node\)/)
+  const value = runInNewContext(`${customScript}
+    const count=2000,base={name:'R22-MAH777-99-00',kids:new Map(),isId:false};
+    const root={name:'__root__',kids:new Map([[base.name,base]])};
+    for(let i=0;i<count;i++){
+      const suffix=String(i).padStart(5,'0'),full='R22-MAH777-99-00_VARIANT-'+suffix;
+      const child={name:'CHILD-'+suffix,kids:new Map(),isId:true};
+      root.kids.set(full,{name:full,kids:new Map([[child.name,child]]),isId:false});
+    }
+    const started=Date.now(),repaired=repairMahHierarchyParents(root),elapsed=Date.now()-started;
+    JSON.stringify({
+      repaired,elapsed,rootChildren:root.kids.size,baseChildren:base.kids.size,
+      sampleDependency:base.kids.get('CHILD-01999').dependencyOverride
+    });
+  `, { console, setTimeout, clearTimeout })
+  const result = JSON.parse(value)
+  assert.equal(result.repaired, 2000)
+  assert.equal(result.rootChildren, 1)
+  assert.equal(result.baseChildren, 2000)
+  assert.equal(result.sampleDependency, 'R22-MAH777-99-00_VARIANT-01999')
+  assert.ok(result.elapsed < 750, `indexed MAH normalization took ${result.elapsed}ms`)
 })
 
 test('SSM registers keep one normalized Equipment ID across hierarchy and PMD rows', () => {
