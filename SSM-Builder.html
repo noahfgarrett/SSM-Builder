@@ -654,13 +654,21 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.22';
+const APP_VERSION = '1.1.23';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.23',
+    date:'2026-07-23T13:31:46Z',
+    type:'feature',
+    stats:{features:1,fixes:1},
+    notes:`- Added MEL System Parent corrections when equipment and closest-parent UPNs differ
+- Added review flags when required MEL parent data is missing`
+  },
   {
     version:'1.1.22',
     date:'2026-07-22T13:36:43Z',
@@ -1172,7 +1180,7 @@ const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:n
   cableStruckTags:new Set(),
   pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdSuffixMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
   melRows:[],melByTag:new Map(),melByNorm:new Map(),melXfmBySuffix:new Map(),
-  epDetail:new Map(),epNameSet:new Set(),review:[],placements:[],reviewMode:'cross',placementRevision:0,placementQuery:'',lastPlacementMove:null,
+  epDetail:new Map(),epNameSet:new Set(),epSourceTags:new Set(),review:[],placements:[],reviewMode:'cross',placementRevision:0,placementQuery:'',lastPlacementMove:null,
   workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
   cmpFilter:'all',cmpSearch:'',cmpDiff:'all',cmpSort:null,revSearch:'',revSort:null,revMinPct:null,showStats:true,
   resultFullscreen:false,
@@ -1277,7 +1285,7 @@ function kidsOf(n){return n.children.filter(c=>!nodeHidden(c));}
 function depOf(name){return S.deps.get(cleanTag(name).toLowerCase())||'';}
 /* Load descriptions keep their source-row ID Name/Final Source relationship;
    everything else uses the cable schedule. */
-function nodeDep(n){return n.isLoad?n.loadDependency:depOf(n.name);}
+function nodeDep(n){return n.dependencyOverride||(n.isLoad?n.loadDependency:depOf(n.name));}
 
 /* ---- loading / toast ---- */
 const RING_C=238.76; // 2·π·38
@@ -1464,10 +1472,11 @@ const MEL_SHEET_NAME='equipmentlist';
 const _melCache=new Map();
 function isMelSheet(key){const [fid,sheet]=key.split(KEYSEP);return normH(sheet)===MEL_SHEET_NAME||!!(fileById(fid)&&melInfo(key));}
 function detectMel(headers){
-  const norm=headers.map(normH),tag=norm.findIndex(h=>h==='equipmenttag'||h.endsWith('equipmenttag'));
+  const norm=headers.map(normH),tag=norm.findIndex(h=>h==='equipmenttag'||(h.endsWith('equipmenttag')&&!h.startsWith('systemparent')));
   const upn=norm.findIndex(h=>h==='upn'||h.startsWith('upn'));
   const building=norm.findIndex(h=>h==='bldg'||h==='building'||h.startsWith('building'));
-  return tag>=0?{tag,upn,building}:null;
+  const systemParent=norm.findIndex(h=>h.startsWith('systemparent')&&h.includes('equipmenttag'));
+  return tag>=0?{tag,upn,building,systemParent}:null;
 }
 function melInfo(key){
   if(_melCache.has(key))return _melCache.get(key);
@@ -1623,7 +1632,7 @@ function addLoadChild(deepNode,loadName,dependency){
 function buildRoots(root){
   let id=0;
   const conv=(m,depth,parent)=>{
-    const node={id:'n'+(id++),name:m.name,depth,isId:m.isId,isLoad:!!m.isLoad,loadDependency:m.loadDependency||'',parent,children:[],_raw:m,
+    const node={id:'n'+(id++),name:m.name,depth,isId:m.isId,isLoad:!!m.isLoad,loadDependency:m.loadDependency||'',dependencyOverride:m.dependencyOverride||'',parent,children:[],_raw:m,
       isInstrument:!!m.isInstrument,description:m.description||'',pmdKey:m.pmdKey||'',pmdPanel:m.pmdPanel||'',pmdBuilding:m.pmdBuilding||'',
       placementId:m.placementId||'',placementStatus:m.placementStatus||'',
       isSpare:isSpareName(m.name),isSpace:isSpaceName(m.name)};
@@ -1924,9 +1933,10 @@ async function buildMel(tick){
     for(let i=headerRow+1;i<aoa.length;i++){
       if(tick)await tick('Reading Master Equipment List');
       const tag=cleanTag(aoa[i][map.tag]);if(!tag)continue;
-      const upn=map.upn>=0?clean(aoa[i][map.upn]):'',building=map.building>=0?clean(aoa[i][map.building]):'',keyTag=tagKey(tag),existing=S.melByTag.get(keyTag);
-      if(existing){if(!existing.upn&&upn)existing.upn=upn;if(!existing.building&&building)existing.building=building;continue;}
-      const rec={tag,upn,building};S.melRows.push(rec);S.melByTag.set(keyTag,rec);
+      const upn=map.upn>=0?clean(aoa[i][map.upn]):'',building=map.building>=0?clean(aoa[i][map.building]):'';
+      const systemParent=map.systemParent>=0?clean(aoa[i][map.systemParent]):'',keyTag=tagKey(tag),existing=S.melByTag.get(keyTag);
+      if(existing){if(!existing.upn&&upn)existing.upn=upn;if(!existing.building&&building)existing.building=building;if(!existing.systemParent&&systemParent)existing.systemParent=systemParent;continue;}
+      const rec={tag,upn,building,systemParent};S.melRows.push(rec);S.melByTag.set(keyTag,rec);
       const normKey=normSep(tag);if(normKey&&!S.melByNorm.has(normKey))S.melByNorm.set(normKey,rec);
       if(hasEquipmentRole(tag,'XFM')){const suffix=equipmentSuffix(tag),list=S.melXfmBySuffix.get(suffix)||[];list.push(rec);S.melXfmBySuffix.set(suffix,list);}
     }
@@ -1934,6 +1944,10 @@ async function buildMel(tick){
 }
 function melRecord(value){return S.melByTag.get(tagKey(value))||S.melByNorm.get(normSep(cleanTag(value)))||null;}
 function melUpn(value){const rec=melRecord(value);return rec?rec.upn:'';}
+function firstSystemParentTag(value){
+  const parts=clean(value).split(/[;\n\r,|]+/).map(clean).filter(Boolean);
+  return parts.length?cleanTag(parts[0]):'';
+}
 function equipmentRole(value){
   const tag=stripPowerVariant(value).toUpperCase();
   if(/(?:^|[-_])GIS/.test(tag))return 'GIS';
@@ -2017,7 +2031,7 @@ function rawKidEntry(kids,value){
 }
 function mergeRawHierarchyNode(target,source){
   target.isId=!!(target.isId||source.isId);target.isLoad=!!(target.isLoad||source.isLoad);target.isInstrument=!!(target.isInstrument||source.isInstrument);
-  for(const field of ['loadDependency','description','pmdKey','pmdPanel','pmdBuilding'])if(!target[field]&&source[field])target[field]=source[field];
+  for(const field of ['loadDependency','dependencyOverride','description','pmdKey','pmdPanel','pmdBuilding'])if(!target[field]&&source[field])target[field]=source[field];
   for(const child of source.kids.values()){
     const existing=rawKidEntry(target.kids,child.name);
     if(existing)mergeRawHierarchyNode(existing[1],child);else target.kids.set(child.name,child);
@@ -2280,6 +2294,107 @@ function repairCableSsmRows(rows,plan){
   for(const key of plan.generated)emitGenerated(key);
   return out;
 }
+function melUpnKey(value){return clean(value).replace(/\s+/g,'').toLowerCase();}
+function addMelSystemParentWarning(plan,warning){
+  const key=[tagKey(warning.equip),tagKey(warning.currentParent),warning.missingField,warning.reason].join(KEYSEP);
+  if(plan._warningKeys.has(key))return;
+  plan._warningKeys.add(key);plan.warnings.push(warning);
+}
+function buildMelSystemParentPlan(rows){
+  const corrections=new Map(),warnings=[],plan={corrections,warnings,_warningKeys:new Set()};
+  const byEquipment=new Map();for(const row of rows){const key=tagKey(row&&row[0]);if(key&&!byEquipment.has(key))byEquipment.set(key,row);}
+  for(const row of rows){
+    const equip=cleanTag(row&&row[0]),key=tagKey(equip),currentParent=cleanTag(row&&row[1]);
+    if(!equip||!currentParent||isSystemName(currentParent)||!S.epSourceTags.has(key)||corrections.has(key))continue;
+    const equipmentMel=melRecord(equip);if(!equipmentMel)continue;
+    const equipmentUpn=clean(equipmentMel.upn);
+    if(!equipmentUpn){
+      addMelSystemParentWarning(plan,{equip,currentParent,missingField:'Equipment UPN',reason:`MEL parent check skipped because ${equip} has no UPN`});continue;
+    }
+    const parentMel=melRecord(currentParent),parentUpn=clean(parentMel&&parentMel.upn);
+    if(!parentMel){
+      addMelSystemParentWarning(plan,{equip,currentParent,missingField:'Closest Parent MEL record',reason:`MEL parent check skipped because ${currentParent} was not found in the MEL`});continue;
+    }
+    if(!parentUpn){
+      addMelSystemParentWarning(plan,{equip,currentParent,missingField:'Closest Parent UPN',reason:`MEL parent check skipped because ${currentParent} has no UPN`});continue;
+    }
+    if(melUpnKey(equipmentUpn)===melUpnKey(parentUpn))continue;
+    const newParent=firstSystemParentTag(equipmentMel.systemParent);
+    if(!newParent){
+      addMelSystemParentWarning(plan,{equip,currentParent,missingField:'System Parent Equipment Tag(s)',reason:`UPNs differ, but ${equip} has no System Parent Equipment Tag`});continue;
+    }
+    if(tagKey(newParent)===key){
+      addMelSystemParentWarning(plan,{equip,currentParent,missingField:'Valid System Parent Equipment Tag',reason:`UPNs differ, but ${equip}'s System Parent would create a hierarchy cycle`});continue;
+    }
+    if(tagKey(newParent)===tagKey(currentParent)){
+      addMelSystemParentWarning(plan,{equip,currentParent,missingField:'Consistent System Parent Equipment Tag',reason:`UPNs differ, but ${equip}'s System Parent repeats its current Closest Parent`});continue;
+    }
+    const parentRow=byEquipment.get(tagKey(currentParent));
+    corrections.set(key,{equip,currentParent,newParent,sourceParent:cleanTag(parentRow&&parentRow[1]),equipmentUpn,parentUpn});
+  }
+  return plan;
+}
+function repairMelSystemParentHierarchy(root,plan){
+  if(!plan||!plan.corrections.size)return 0;
+  let moved=0;
+  for(const [correctionKey,correction] of plan.corrections){
+    const occurrences=rawOccurrences(root,correction.equip);
+    if(!occurrences.length){
+      addMelSystemParentWarning(plan,{equip:correction.equip,currentParent:correction.currentParent,missingField:'Hierarchy branch',
+        reason:`UPNs differ, but ${correction.equip} was not available for a safe hierarchy move`});
+      plan.corrections.delete(correctionKey);continue;
+    }
+    const basis=occurrences.find(hit=>tagKey(hit.holder.name)===tagKey(correction.currentParent))||occurrences[0];
+    const currentParentNode=tagKey(basis.holder.name)===tagKey(correction.currentParent)?basis.holder:findRawHierarchyNode(root,correction.currentParent,basis.node);
+    const parentLocation=currentParentNode&&findRawHolderByNode(root,currentParentNode),container=parentLocation?parentLocation.holder:root;
+    let targetEntry=rawKidEntry(container.kids,correction.newParent),target=targetEntry&&targetEntry[1],targetCreated=false;
+    if(!target)target=findRawHierarchyNode(root,correction.newParent,basis.node);
+    if(!target){target={name:correction.newParent,kids:new Map(),isId:false};container.kids.set(correction.newParent,target);targetCreated=true;}
+    if(rawContains(basis.node,target)){
+      addMelSystemParentWarning(plan,{equip:correction.equip,currentParent:correction.currentParent,missingField:'Valid System Parent placement',
+        reason:`UPNs differ, but moving ${correction.equip} under ${correction.newParent} would create a hierarchy cycle`});
+      plan.corrections.delete(correctionKey);continue;
+    }
+    let applied=false;
+    for(const occurrence of occurrences){
+      const live=findRawHolderByNode(root,occurrence.node);if(!live||occurrence.node===target||rawContains(occurrence.node,target))continue;
+      if(live.holder===target){occurrence.node.dependencyOverride=correction.currentParent;applied=true;continue;}
+      live.holder.kids.delete(live.key);
+      const duplicate=rawKidEntry(target.kids,occurrence.node.name),movedNode=duplicate&&duplicate[1]!==occurrence.node?mergeRawHierarchyNode(duplicate[1],occurrence.node):occurrence.node;
+      movedNode.dependencyOverride=correction.currentParent;
+      if(!duplicate)target.kids.set(occurrence.node.name,occurrence.node);
+      moved++;applied=true;
+    }
+    if(!applied){
+      if(targetCreated&&!target.kids.size){const created=rawKidEntry(container.kids,correction.newParent);if(created&&created[1]===target)container.kids.delete(created[0]);}
+      addMelSystemParentWarning(plan,{equip:correction.equip,currentParent:correction.currentParent,missingField:'Valid System Parent placement',
+        reason:`UPNs differ, but ${correction.equip} could not be moved under ${correction.newParent} safely`});
+      plan.corrections.delete(correctionKey);
+    }
+  }
+  return moved;
+}
+function repairMelSystemParentSsmRows(rows,plan){
+  if(!plan||!plan.corrections.size)return rows;
+  const existing=new Set(rows.map(row=>tagKey(row&&row[0])).filter(Boolean)),emittedParents=new Set(),out=[];
+  for(const row of rows){
+    const correction=plan.corrections.get(tagKey(row&&row[0]));
+    if(!correction){out.push(row);continue;}
+    const parentKey=tagKey(correction.newParent);
+    if(!existing.has(parentKey)&&!emittedParents.has(parentKey)){out.push([correction.newParent,correction.sourceParent]);emittedParents.add(parentKey);}
+    const fixed=[...row];fixed[1]=correction.newParent;fixed[2]=correction.currentParent;
+    if(fixed[3]&&typeof fixed[3]==='object'){const meta={...fixed[3]};delete meta.keepDuplicateDep;if(Object.keys(meta).length)fixed[3]=meta;else fixed.length=3;}
+    out.push(fixed);
+  }
+  return out;
+}
+function registerMelSystemParentIssues(root,plan){
+  for(const warning of (plan&&plan.warnings)||[]){
+    const occurrences=rawOccurrences(root,warning.equip),occurrence=occurrences.find(hit=>tagKey(hit.holder.name)===tagKey(warning.currentParent))||occurrences[0];
+    registerPlacement({node:occurrence&&occurrence.node,branchName:warning.equip,originalParent:warning.currentParent,currentParent:occurrence?occurrence.holder.name:warning.currentParent,
+      suggestedParent:'',status:'missing-data',source:'Master Equipment List',reason:warning.reason,missingField:warning.missingField,path:occurrence?occurrence.path:[]});
+  }
+}
 async function buildDeps(tick){
   S.deps=new Map();S.depDetail=new Map();S.hasCable=false;
   for(const key of S.cableSel){
@@ -2415,7 +2530,7 @@ async function buildHierarchy(){
     await buildMel(tick);
     await buildDeps(tick);
     await buildPmd(tick);
-    S.epDetail=new Map();
+    S.epDetail=new Map();S.epSourceTags=new Set();
     const combined={name:'__root__',kids:new Map()};let rowsRead=0,loadCount=0;
     const seenC=new Set(),ssmCombined=[],sheets=[];
     const noteEP=(name,circuit)=>{const k=clean(name).toLowerCase();if(!k)return;const e=S.epDetail.get(k)||{};if(circuit&&e.circuit==null)e.circuit=circuit;S.epDetail.set(k,e);};
@@ -2428,7 +2543,9 @@ async function buildHierarchy(){
       const seenS=new Set(),ssmRows=[];
       for(let i=headerRow+1;i<aoa.length;i++){
         await tick(label);
-        let {segs,hasId,idName,loadDesc,finalSource}=rowToPath(aoa[i],cols,rec,i,loadTags);
+        const parsed=rowToPath(aoa[i],cols,rec,i,loadTags);
+        for(const value of [...parsed.segs,parsed.loadDesc]){const key=tagKey(value);if(key&&!isNote(value))S.epSourceTags.add(key);}
+        let {segs,hasId,idName,loadDesc,finalSource}=parsed;
         segs=applyMelParentCorrections(gisBusCut(segs),loadDesc,true); // also correct MEL-backed LV transformer parents
         if(!segs.length)continue;
         rowsRead++;
@@ -2466,15 +2583,21 @@ async function buildHierarchy(){
     const preparedCombined=repairEasyPowerSsmRows(repairMelSsmRows(ssmCombined)),combinedCablePlan=buildCableParentPlan(preparedCombined);
     registerCablePlacementIssues(combined,combinedCablePlan);
     repairCableHierarchyParents(combined,combinedCablePlan);
-    const finalCombinedRows=repairCableSsmRows(preparedCombined,combinedCablePlan);
+    let finalCombinedRows=repairCableSsmRows(preparedCombined,combinedCablePlan);
+    const combinedMelSystemPlan=buildMelSystemParentPlan(finalCombinedRows);
+    repairMelSystemParentHierarchy(combined,combinedMelSystemPlan);
+    finalCombinedRows=repairMelSystemParentSsmRows(finalCombinedRows,combinedMelSystemPlan);
     for(const sh of sheets){
       const prepared=repairEasyPowerSsmRows(repairMelSsmRows(sh.ssmRows)),plan=buildCableParentPlan(prepared);
       repairCableHierarchyParents(sh._sMap,plan);sh.ssmRows=repairCableSsmRows(prepared,plan);
+      const melSystemPlan=buildMelSystemParentPlan(sh.ssmRows);
+      repairMelSystemParentHierarchy(sh._sMap,melSystemPlan);sh.ssmRows=repairMelSystemParentSsmRows(sh.ssmRows,melSystemPlan);
     }
     report(.80,'Linking PMD instruments');await raf();
     const instrumentCount=attachPmdInstruments(combined);
     for(const sh of sheets)_attachPmdInstruments(sh._sMap,null);
     bindMelPlacementSeeds(combined);
+    registerMelSystemParentIssues(combined,combinedMelSystemPlan);
     enforceSystemRoots(combined,true);for(const sh of sheets)enforceSystemRoots(sh._sMap,false);
     S.sheets=sheets;S.ssmCombined=uniqueSsmRows(appendPmdSsmRows(finalCombinedRows,true));
     for(const sh of S.sheets)sh.ssmRows=uniqueSsmRows(appendPmdSsmRows(sh.ssmRows,false));
@@ -2594,9 +2717,10 @@ async function movePlacementBranch(issueId,parentNodeId){
 }
 async function acceptPlacement(issueId){
   const issue=S.placements.find(item=>item.id===issueId&&!item.resolved);if(!issue)return;
+  const wasWarning=issue.status==='missing-data';
   const oldIssue={resolved:issue.resolved,placementId:issue.node&&issue.node.placementId,placementStatus:issue.node&&issue.node.placementStatus};
   issue.resolved=true;if(issue.node){issue.node.placementId='';issue.node.placementStatus='';}
-  S.lastPlacementMove={type:'accept',issue,oldIssue};closeDrawer();await refreshPlacementModels();toast('Placement accepted');
+  S.lastPlacementMove={type:'accept',issue,oldIssue};closeDrawer();await refreshPlacementModels();toast(wasWarning?'Warning acknowledged':'Placement accepted');
 }
 async function undoPlacement(){
   const action=S.lastPlacementMove;if(!action)return;
@@ -2911,15 +3035,20 @@ function reviewModesHtml(){const placements=activePlacements().length;return `<d
   <button class="review-mode ${S.reviewMode==='cross'?'on':''}" data-review-mode="cross" role="tab" aria-selected="${S.reviewMode==='cross'}">${ic('table-2')}Cross-Sheet Tag Review <span class="review-mode-count">${S.review.length}</span></button>
   <button class="review-mode ${S.reviewMode==='placement'?'on':''}" data-review-mode="placement" role="tab" aria-selected="${S.reviewMode==='placement'}">${ic('git-branch')}Placement Review <span class="review-mode-count">${placements}</span></button>
   </div>`;}
+function placementState(item,detail){
+  if(item.status==='suggested')return detail?'Auto-placed · review recommended':'Suggested';
+  if(item.status==='missing-data')return detail?'MEL data missing · relationship unchanged':'Missing MEL data';
+  return detail?'Needs a parent':'Needs parent';
+}
 function renderPlacementReviewPanel(el){
   const q=clean(S.placementQuery).toLowerCase(),all=activePlacements(),items=all.filter(item=>!q||[item.branchName,item.currentParent,item.suggestedParent,item.source,item.reason].join(' ').toLowerCase().includes(q));
   const list=items.length?`<div class="placement-list">${items.map(item=>{
     const descendants=item.node?rawSubtreeCount(item.node):0,path=(item.path&&item.path.length?item.path:[item.currentParent,item.branchName].filter(Boolean)).join(' / ');
     return `<button class="placement-item" data-placement="${item.id}"><div><div class="placement-name">${esc(item.branchName)}</div><div class="placement-meta">${descendants} descendant${descendants===1?'':'s'} · ${esc(item.source)}</div></div>
       <div class="placement-reason">${esc(item.reason)}<span class="placement-path">${esc(path||'Not currently placed')}</span></div>
-      <span class="placement-state">${ic(item.status==='suggested'?'circle-check':'triangle-alert')}${item.status==='suggested'?'Suggested':'Needs parent'}</span></button>`;
+      <span class="placement-state">${ic(item.status==='suggested'?'circle-check':'triangle-alert')}${placementState(item,false)}</span></button>`;
   }).join('')}</div>`:`<div class="note info">${ic('circle-check')}<div>${all.length?'No placement items match this filter.':'No branches are waiting for placement review.'}</div></div>`;
-  el.innerHTML=reviewModesHtml()+`<div class="note warn" style="margin-bottom:12px">${ic('triangle-alert')}<div>Review branches that were auto-placed from a unique MEL match or could not be anchored safely. Moving a branch keeps its full subtree together.</div></div>
+  el.innerHTML=reviewModesHtml()+`<div class="note warn" style="margin-bottom:12px">${ic('triangle-alert')}<div>Review branches that were auto-placed, could not be anchored safely, or could not complete a MEL parent check. Moving a branch keeps its full subtree together.</div></div>
     <div class="toolbar"><div class="search">${ic('search')}<input id="placementFilter" type="text" placeholder="Filter branches…" value="${esc(S.placementQuery)}" autocomplete="off"><button class="qx ${S.placementQuery?'show':''}" id="placementFilterX">${ic('x')}</button></div>
     ${S.lastPlacementMove?`<button class="btn sm spacer" id="placementUndo">${ic('rotate-ccw')}Undo last change</button>`:''}</div>${list}`;
   wireReviewPanel();
@@ -3416,7 +3545,7 @@ function addReviewSheet(wb,used){
 function addPlacementReviewSheet(wb,used){
   const rows=activePlacements();if(!rows.length)return;
   const aoa=[['Branch','Status','Source','Original Parent','Current Parent','Suggested Parent','Descendants','Reason']];
-  for(const item of rows)aoa.push([item.branchName,item.status==='suggested'?'Suggested':'Needs Parent',item.source,item.originalParent||'',item.currentParent||'',item.suggestedParent||'',item.node?rawSubtreeCount(item.node):0,item.reason]);
+  for(const item of rows)aoa.push([item.branchName,placementState(item,false),item.source,item.originalParent||'',item.currentParent||'',item.suggestedParent||'',item.node?rawSubtreeCount(item.node):0,item.reason]);
   const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:28},{wch:14},{wch:22},{wch:25},{wch:25},{wch:25},{wch:12},{wch:54}];
   styleHeaderRow(ws,0);setFilter(ws,0);addSheet(wb,ws,'Placement Review',used,1);
 }
@@ -3512,7 +3641,7 @@ function openPlacementDrawer(issueId){
   $('#drawerTitle').innerHTML=`${ic('git-branch')}<span>${esc(issue.branchName)}</span>`;
   const field=(label,value)=>`<div class="dfield"><div class="dlabel">${esc(label)}</div><div class="dval ${value?'':'empty'}">${esc(value||'—')}</div></div>`;
   $('#drawerBody').innerHTML=`
-    ${field('Status',issue.status==='suggested'?'Auto-placed · review recommended':'Needs a parent')}
+    ${field('Status',placementState(issue,true))}
     ${field('Source',issue.source)}${field('Reason',issue.reason)}
     ${field('Original parent',issue.originalParent||issue.currentParent)}${field('Current parent',issue.currentParent)}
     ${issue.suggestedParent?field('Suggested parent',issue.suggestedParent):''}
@@ -3523,7 +3652,7 @@ function openPlacementDrawer(issueId){
       <div class="placement-preview" id="placementPreview" hidden></div>
     </div>
     <div class="placement-actions">
-      ${issue.status==='suggested'?`<button class="btn" id="acceptPlacement">${ic('check')}Accept placement</button>`:''}
+      ${(issue.status==='suggested'||issue.status==='missing-data')?`<button class="btn" id="acceptPlacement">${ic('check')}${issue.status==='missing-data'?'Acknowledge warning':'Accept placement'}</button>`:''}
       ${S.lastPlacementMove?`<button class="btn ghost" id="drawerPlacementUndo">${ic('rotate-ccw')}Undo</button>`:''}
       <button class="btn primary spacer" id="movePlacement" disabled>${ic('git-branch')}Move branch</button>
     </div>`;
@@ -3547,10 +3676,13 @@ function openDetail(nodeId){
   const nk=clean(node.name).toLowerCase();
   const d=S.depDetail.get(nk),ep=S.epDetail.get(nk);
   const pmd=node.pmdKey?S.pmdDetail.get(node.pmdKey):null,mel=melRecord(node.name);
+  const placement=node.placementId?S.placements.find(item=>item.id===node.placementId&&!item.resolved):null;
   $('#drawerTitle').innerHTML=`${ic(node.isInstrument?'database':node.isLoad?'corner-down-right':'spline')}<span>${esc(node.name)}</span>`;
   const fld=(label,val,extra)=>`<div class="dfield"><div class="dlabel">${esc(label)}</div><div class="dval ${val?'':'empty'}">${esc(val||'—')}${extra||''}</div></div>`;
   let html='';
   if(S.melRows.length)html+=fld('UPN',mel?mel.upn:'');
+  if(mel&&mel.systemParent)html+=fld('System Parent Equipment Tag',firstSystemParentTag(mel.systemParent));
+  if(placement&&placement.status==='missing-data')html+=fld('MEL parent check',placement.reason);
   if(S.cableStruckTags.has(tagKey(node.name)))html+=fld('Cable Schedule status','Struck through in source');
   if(node.pmdBuilding)html+=fld('Building',node.pmdBuilding);
   if(node.pmdPanel)html+=fld('PMD Panel Match',node.pmdPanel);

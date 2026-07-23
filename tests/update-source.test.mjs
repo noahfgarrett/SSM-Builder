@@ -177,10 +177,11 @@ test('Load Description relations use ID Name, Final Source, and self-match rules
   assert.match(html, /function loadSsmRelation\(idName,finalSource,loadDesc\)/)
   assert.match(html, /if\(id&&tagKey\(id\)===tagKey\(load\)\)return \{parent:final,dep:'',keepDuplicateDep:false\}/)
   assert.match(html, /return \{parent:relation,dep:relation,keepDuplicateDep:!!relation\}/)
-  assert.match(html, /function nodeDep\(n\)\{return n\.isLoad\?n\.loadDependency:depOf\(n\.name\);\}/)
+  assert.match(html, /function nodeDep\(n\)\{return n\.dependencyOverride\|\|\(n\.isLoad\?n\.loadDependency:depOf\(n\.name\)\);\}/)
   assert.match(html, /function addLoadChild\(deepNode,loadName,dependency\)/)
   assert.match(html, /loadDependency:m\.loadDependency\|\|''/)
-  assert.match(html, /let \{segs,hasId,idName,loadDesc,finalSource\}=rowToPath/)
+  assert.match(html, /const parsed=rowToPath/)
+  assert.match(html, /let \{segs,hasId,idName,loadDesc,finalSource\}=parsed/)
   assert.match(html, /const rel=melCorrectLoadRelation\(loadDesc,loadSsmRelation\(idName,finalSource,loadDesc\)\),meta=rel\.keepDuplicateDep\?\{keepDuplicateDep:true\}:null/)
   assert.match(html, /addLoadChild\(lcDeep,loadDesc,rel\.dep\);addLoadChild\(lsDeep,loadDesc,rel\.dep\)/)
   const value = runInNewContext(`${customScript}
@@ -279,18 +280,18 @@ test('Equipment_List tabs auto-select and index MEL Equipment Tag and UPN values
   assert.match(html, /const MEL_SHEET_NAME='equipmentlist'/)
   assert.match(html, /function isMelSheet\(key\)/)
   assert.match(html, /function detectMel\(headers\)/)
-  assert.match(html, /tag=norm\.findIndex\(h=>h==='equipmenttag'\|\|h\.endsWith\('equipmenttag'\)\)/)
-  assert.match(html, /return tag>=0\?\{tag,upn,building\}:null/)
+  assert.match(html, /tag=norm\.findIndex\(h=>h==='equipmenttag'\|\|\(h\.endsWith\('equipmenttag'\)&&!h\.startsWith\('systemparent'\)\)\)/)
+  assert.match(html, /return tag>=0\?\{tag,upn,building,systemParent\}:null/)
   assert.match(html, /function melInfo\(key\)/)
   assert.match(html, /if\(isMelSheet\(k\)\)S\.melSel\.add\(k\)/)
   assert.match(html, /!isMelSheet\(key\)&&!isPmdSheet\(key\)&&!isCableSheet\(key\)/)
   assert.match(html, /data-mel="\$\{esc\(key\)\}"/)
   assert.match(html, /Equipment Tag → UPN/)
   assert.match(html, /function buildMel\(tick\)/)
-  assert.match(html, /const rec=\{tag,upn,building\};S\.melRows\.push\(rec\);S\.melByTag\.set\(keyTag,rec\)/)
+  assert.match(html, /const rec=\{tag,upn,building,systemParent\};S\.melRows\.push\(rec\);S\.melByTag\.set\(keyTag,rec\)/)
   const value = runInNewContext(`${customScript}
     JSON.stringify([
-      detectMel(['Description','Equipment Tag','UPN','Bldg']),
+      detectMel(['Description','Equipment Tag','UPN','Bldg','System Parent Equipment Tag(s)']),
       detectMel(['Equipment Tag','UPN (Code)']),
       detectMel(['Equipment Tag','Description']),
       detectMel(['Equipment','Unit Number']),
@@ -298,7 +299,116 @@ test('Equipment_List tabs auto-select and index MEL Equipment Tag and UPN values
       isMelSheet('file\\u0001Other')
     ]);
   `, { console, setTimeout, clearTimeout })
-  assert.deepEqual(JSON.parse(value), [{ tag: 1, upn: 2, building: 3 }, { tag: 0, upn: 1, building: -1 }, { tag: 0, upn: -1, building: -1 }, null, true, false])
+  assert.deepEqual(JSON.parse(value), [
+    { tag: 1, upn: 2, building: 3, systemParent: 4 },
+    { tag: 0, upn: 1, building: -1, systemParent: -1 },
+    { tag: 0, upn: -1, building: -1, systemParent: -1 },
+    null,
+    true,
+    false,
+  ])
+})
+
+test('MEL UPN mismatches replace closest parents and preserve old parents as dependencies', () => {
+  assert.match(html, /function firstSystemParentTag\(value\)/)
+  assert.match(html, /function buildMelSystemParentPlan\(rows\)/)
+  assert.match(html, /function repairMelSystemParentHierarchy\(root,plan\)/)
+  assert.match(html, /function repairMelSystemParentSsmRows\(rows,plan\)/)
+  assert.match(html, /status:'missing-data'/)
+  assert.match(html, /Missing MEL data/)
+  const value = runInNewContext(`${customScript}
+    S.epSourceTags=new Set(['equipment-a','matched-equipment','missing-upn','missing-system-parent']);
+    S.melByNorm=new Map();
+    S.melByTag=new Map([
+      ['old-parent',{tag:'OLD-PARENT',upn:'372',systemParent:''}],
+      ['new-parent',{tag:'NEW-PARENT',upn:'373',systemParent:''}],
+      ['equipment-a',{tag:'EQUIPMENT-A',upn:'373',systemParent:'NEW-PARENT; ALTERNATE-PARENT'}],
+      ['matched-equipment',{tag:'MATCHED-EQUIPMENT',upn:'372',systemParent:'UNUSED-PARENT'}],
+      ['missing-upn',{tag:'MISSING-UPN',upn:'',systemParent:'NEW-PARENT'}],
+      ['missing-system-parent',{tag:'MISSING-SYSTEM-PARENT',upn:'374',systemParent:''}]
+    ]);
+    S.placements=[];S._placementId=0;
+    const child={name:'CHILD-A',kids:new Map(),isId:true};
+    const equipment={name:'EQUIPMENT-A',kids:new Map([[child.name,child]]),isId:true};
+    const matched={name:'MATCHED-EQUIPMENT',kids:new Map(),isId:true};
+    const missingUpn={name:'MISSING-UPN',kids:new Map(),isId:true};
+    const missingSystem={name:'MISSING-SYSTEM-PARENT',kids:new Map(),isId:true};
+    const oldParent={name:'OLD-PARENT',kids:new Map([
+      [equipment.name,equipment],
+      [matched.name,matched],
+      [missingUpn.name,missingUpn],
+      [missingSystem.name,missingSystem]
+    ]),isId:false};
+    const gis={name:'GIS-1',kids:new Map([[oldParent.name,oldParent]]),isId:false};
+    const system={name:GIS_PARENT,kids:new Map([[gis.name,gis]]),isId:false};
+    const root={name:'__root__',kids:new Map([[system.name,system]])};
+    const rows=[
+      [GIS_PARENT,''],
+      ['GIS-1',GIS_PARENT],
+      ['OLD-PARENT','GIS-1'],
+      ['EQUIPMENT-A','OLD-PARENT','OLD-PARENT',{keepDuplicateDep:true}],
+      ['CHILD-A','EQUIPMENT-A'],
+      ['MATCHED-EQUIPMENT','OLD-PARENT'],
+      ['MISSING-UPN','OLD-PARENT'],
+      ['MISSING-SYSTEM-PARENT','OLD-PARENT']
+    ];
+    const plan=buildMelSystemParentPlan(rows);
+    const moved=repairMelSystemParentHierarchy(root,plan);
+    const repaired=repairMelSystemParentSsmRows(rows,plan).map(ssmResolve);
+    registerMelSystemParentIssues(root,plan);
+    const newParent=gis.kids.get('NEW-PARENT');
+    const built=buildRoots(root),builtEquipment=built[0].children[0].children
+      .find(node=>node.name==='NEW-PARENT').children.find(node=>node.name==='EQUIPMENT-A');
+    JSON.stringify({
+      first:firstSystemParentTag('NEW-PARENT; ALTERNATE-PARENT'),
+      moved,
+      correction:[...plan.corrections.values()][0],
+      warnings:plan.warnings.map(item=>({equip:item.equip,missingField:item.missingField})),
+      gisKids:[...gis.kids.keys()],
+      oldKids:[...oldParent.kids.keys()],
+      newKids:[...newParent.kids.keys()],
+      descendants:[...newParent.kids.get('EQUIPMENT-A').kids.keys()],
+      hierarchyDependency:nodeDep(builtEquipment),
+      repaired,
+      placements:S.placements.map(item=>({branch:item.branchName,status:item.status}))
+    });
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), {
+    first: 'NEW-PARENT',
+    moved: 1,
+    correction: {
+      equip: 'EQUIPMENT-A',
+      currentParent: 'OLD-PARENT',
+      newParent: 'NEW-PARENT',
+      sourceParent: 'GIS-1',
+      equipmentUpn: '373',
+      parentUpn: '372',
+    },
+    warnings: [
+      { equip: 'MISSING-UPN', missingField: 'Equipment UPN' },
+      { equip: 'MISSING-SYSTEM-PARENT', missingField: 'System Parent Equipment Tag(s)' },
+    ],
+    gisKids: ['OLD-PARENT', 'NEW-PARENT'],
+    oldKids: ['MATCHED-EQUIPMENT', 'MISSING-UPN', 'MISSING-SYSTEM-PARENT'],
+    newKids: ['EQUIPMENT-A'],
+    descendants: ['CHILD-A'],
+    hierarchyDependency: 'OLD-PARENT',
+    repaired: [
+      { equip: '602 Medium Voltage', parent: '', dep: '', keepDuplicateDep: false },
+      { equip: 'GIS-1', parent: '602 Medium Voltage', dep: '', keepDuplicateDep: false },
+      { equip: 'OLD-PARENT', parent: 'GIS-1', dep: '', keepDuplicateDep: false },
+      { equip: 'NEW-PARENT', parent: 'GIS-1', dep: '', keepDuplicateDep: false },
+      { equip: 'EQUIPMENT-A', parent: 'NEW-PARENT', dep: 'OLD-PARENT', keepDuplicateDep: false },
+      { equip: 'CHILD-A', parent: 'EQUIPMENT-A', dep: '', keepDuplicateDep: false },
+      { equip: 'MATCHED-EQUIPMENT', parent: 'OLD-PARENT', dep: '', keepDuplicateDep: false },
+      { equip: 'MISSING-UPN', parent: 'OLD-PARENT', dep: '', keepDuplicateDep: false },
+      { equip: 'MISSING-SYSTEM-PARENT', parent: 'OLD-PARENT', dep: '', keepDuplicateDep: false },
+    ],
+    placements: [
+      { branch: 'MISSING-UPN', status: 'missing-data' },
+      { branch: 'MISSING-SYSTEM-PARENT', status: 'missing-data' },
+    ],
+  })
 })
 
 test('MEL corrects LV transformer parents only when a four-character transformer candidate exists', () => {
