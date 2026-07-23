@@ -180,19 +180,35 @@ test('hierarchy, review, and comparison tags support click-to-copy', () => {
   assert.match(markup.list, /data-copy-tag="TAG-B"/)
 })
 
-test('equipment tags consistently drop trailing -P and -S suffixes', () => {
+test('equipment tags consistently drop configured terminal suffixes', () => {
   assert.match(html, /const cleanTag=v=>clean\(v\)\.normalize\('NFKC'\)/)
   const value = runInNewContext(`${customScript}
-    JSON.stringify([
-      cleanTag('TAG-100-P'),
-      cleanTag('TAG-100-S'),
-      cleanTag('3F21\u2011LVSY373B'),
-      cleanTag('3F21-\u200BXFMY373B'),
-      cleanRegisterTag('PDU-MCC-CIM'),
-      cleanRegisterTag('EF25 (G22.5) - CIM')
-    ]);
+    JSON.stringify({
+      tags:[
+        cleanTag('TAG-100-P'),
+        cleanTag('TAG-100-S'),
+        cleanTag('TAG-100-A'),
+        cleanTag('TAG-100-B'),
+        cleanTag('TAG-100-OUTPUT'),
+        cleanTag('TAG-100-OUTPUT-B'),
+        cleanTag('TAG-A-100'),
+        cleanTag('TAG-OUTPUT-1'),
+        cleanTag('3F21\u2011LVSY373B'),
+        cleanTag('3F21-\u200BXFMY373B'),
+        cleanRegisterTag('PDU-MCC-CIM'),
+        cleanRegisterTag('EF25 (G22.5) - CIM')
+      ],
+      register:ssmResolve(['EQUIP-A','PARENT-B','DEPENDENCY-OUTPUT'])
+    });
   `, { console, setTimeout, clearTimeout })
-  assert.deepEqual(JSON.parse(value), ['TAG-100', 'TAG-100', '3F21-LVSY373B', '3F21-XFMY373B', 'PDU-MCC-CIM', 'EF25 (G22.5) - CIM'])
+  assert.deepEqual(JSON.parse(value), {
+    tags:[
+    'TAG-100', 'TAG-100', 'TAG-100', 'TAG-100', 'TAG-100', 'TAG-100',
+    'TAG-A-100', 'TAG-OUTPUT-1', '3F21-LVSY373B', '3F21-XFMY373B',
+    'PDU-MCC-CIM', 'EF25 (G22.5) - CIM'
+    ],
+    register:{equip:'EQUIP',parent:'PARENT',dep:'DEPENDENCY',keepDuplicateDep:false}
+  })
   assert.match(html, /function rowTag\(row,col,rec,rowIndex\)/)
   assert.match(html, /return col>=0\?cleanTag\(row\[col\]\):''/)
   assert.match(html, /const source=rowTag\(row,cols\.source,rec,rowIndex\)/)
@@ -271,29 +287,29 @@ test('Cable Schedule chains replace duplicate parents and add missing hierarchy 
     S.deps=new Map([
       ['cable-panel-1','CABLE-PANEL-2'],
       ['cable-panel-2','EP-PARENT'],
-      ['load-a','CABLE-PANEL-1'],
-      ['load-b','SAME-PANEL'],
+      ['load-alpha','CABLE-PANEL-1'],
+      ['load-bravo','SAME-PANEL'],
       ['load-cycle','CYCLE-PANEL'],
       ['cycle-panel','LOAD-CYCLE']
     ]);
     const rows=[
       ['ROOT',''],
       ['EP-PARENT','ROOT'],
-      ['LOAD-A','EP-PARENT','EP-PARENT',{keepDuplicateDep:true}],
-      ['LOAD-B','SAME-PANEL','SAME-PANEL',{keepDuplicateDep:true}],
+      ['LOAD-ALPHA','EP-PARENT','EP-PARENT',{keepDuplicateDep:true}],
+      ['LOAD-BRAVO','SAME-PANEL','SAME-PANEL',{keepDuplicateDep:true}],
       ['LOAD-CYCLE','OLD-CYCLE','OLD-CYCLE',{keepDuplicateDep:true}]
     ];
     const plan=buildCableParentPlan(rows),relationsBefore=[...plan.relations.values()];
     S.deps=new Map([...S.deps.entries()].reverse());
     const reversedPlan=buildCableParentPlan(rows),orderIndependent=JSON.stringify(relationsBefore)===JSON.stringify([...reversedPlan.relations.values()]);
     const repaired=repairCableSsmRows(rows,plan);
-    const child={name:'INSTRUMENT-A',kids:new Map(),isId:false};
-    const load={name:'LOAD-A',kids:new Map([[child.name,child]]),isId:false,isLoad:true,loadDependency:'EP-PARENT'};
+    const child={name:'INSTRUMENT-ALPHA',kids:new Map(),isId:false};
+    const load={name:'LOAD-ALPHA',kids:new Map([[child.name,child]]),isId:false,isLoad:true,loadDependency:'EP-PARENT'};
     const ep={name:'EP-PARENT',kids:new Map([[load.name,load]]),isId:true};
     const source={name:'ROOT',kids:new Map([[ep.name,ep]]),isId:false};
     const tree={name:'__root__',kids:new Map([[source.name,source]])};
     repairCableHierarchyParents(tree,plan);
-    const panel2=ep.kids.get('CABLE-PANEL-2'),panel1=panel2&&panel2.kids.get('CABLE-PANEL-1'),moved=panel1&&panel1.kids.get('LOAD-A');
+    const panel2=ep.kids.get('CABLE-PANEL-2'),panel1=panel2&&panel2.kids.get('CABLE-PANEL-1'),moved=panel1&&panel1.kids.get('LOAD-ALPHA');
     JSON.stringify({
       relations:[...plan.relations.values()],
       seeds:[...plan.seeds],
@@ -309,25 +325,25 @@ test('Cable Schedule chains replace duplicate parents and add missing hierarchy 
   `, { console, setTimeout, clearTimeout })
   assert.deepEqual(JSON.parse(value), {
     relations: [
-      { equip: 'LOAD-A', parent: 'CABLE-PANEL-1' },
+      { equip: 'LOAD-ALPHA', parent: 'CABLE-PANEL-1' },
       { equip: 'CABLE-PANEL-1', parent: 'CABLE-PANEL-2' },
       { equip: 'CABLE-PANEL-2', parent: 'EP-PARENT' },
     ],
-    seeds: ['load-a'],
+    seeds: ['load-alpha'],
     generated: ['cable-panel-1', 'cable-panel-2'],
     epKids: ['CABLE-PANEL-2'],
     panel2Kids: ['CABLE-PANEL-1'],
-    panel1Kids: ['LOAD-A'],
+    panel1Kids: ['LOAD-ALPHA'],
     movedDependency: 'CABLE-PANEL-1',
-    movedKids: ['INSTRUMENT-A'],
+    movedKids: ['INSTRUMENT-ALPHA'],
     orderIndependent: true,
     repaired: [
       { equip: 'ROOT', parent: '', dep: '', keepDuplicateDep: false },
       { equip: 'EP-PARENT', parent: 'ROOT', dep: '', keepDuplicateDep: false },
       { equip: 'CABLE-PANEL-2', parent: 'EP-PARENT', dep: 'EP-PARENT', keepDuplicateDep: true },
       { equip: 'CABLE-PANEL-1', parent: 'CABLE-PANEL-2', dep: 'CABLE-PANEL-2', keepDuplicateDep: true },
-      { equip: 'LOAD-A', parent: 'CABLE-PANEL-1', dep: 'CABLE-PANEL-1', keepDuplicateDep: true },
-      { equip: 'LOAD-B', parent: 'SAME-PANEL', dep: 'SAME-PANEL', keepDuplicateDep: true },
+      { equip: 'LOAD-ALPHA', parent: 'CABLE-PANEL-1', dep: 'CABLE-PANEL-1', keepDuplicateDep: true },
+      { equip: 'LOAD-BRAVO', parent: 'SAME-PANEL', dep: 'SAME-PANEL', keepDuplicateDep: true },
       { equip: 'LOAD-CYCLE', parent: 'OLD-CYCLE', dep: 'OLD-CYCLE', keepDuplicateDep: true },
     ],
   })
@@ -414,14 +430,14 @@ test('MEL UPN checks evaluate every extracted Comparison Equipment ID', () => {
       ['gis-1',{tag:'GIS-1',upn:'372',systemParent:''}],
       ['old-parent',{tag:'OLD-PARENT',upn:'372',systemParent:''}],
       ['new-parent',{tag:'NEW-PARENT',upn:'373',systemParent:''}],
-      ['equipment-a',{tag:'EQUIPMENT-A',upn:'373',systemParent:'NEW-PARENT; ALTERNATE-PARENT'}],
+      ['equipment-alpha',{tag:'EQUIPMENT-ALPHA',upn:'373',systemParent:'NEW-PARENT; ALTERNATE-PARENT'}],
       ['matched-equipment',{tag:'MATCHED-EQUIPMENT',upn:'372',systemParent:'UNUSED-PARENT'}],
       ['missing-upn',{tag:'MISSING-UPN',upn:'',systemParent:'NEW-PARENT'}],
       ['missing-system-parent',{tag:'MISSING-SYSTEM-PARENT',upn:'374',systemParent:''}]
     ]);
     S.placements=[];S._placementId=0;
-    const child={name:'CHILD-A',kids:new Map(),isId:true};
-    const equipment={name:'EQUIPMENT-A',kids:new Map([[child.name,child]]),isId:true};
+    const child={name:'CHILD-ALPHA',kids:new Map(),isId:true};
+    const equipment={name:'EQUIPMENT-ALPHA',kids:new Map([[child.name,child]]),isId:true};
     const matched={name:'MATCHED-EQUIPMENT',kids:new Map(),isId:true};
     const missingUpn={name:'MISSING-UPN',kids:new Map(),isId:true};
     const missingSystem={name:'MISSING-SYSTEM-PARENT',kids:new Map(),isId:true};
@@ -438,8 +454,8 @@ test('MEL UPN checks evaluate every extracted Comparison Equipment ID', () => {
       [GIS_PARENT,''],
       ['GIS-1',GIS_PARENT],
       ['OLD-PARENT','GIS-1'],
-      ['EQUIPMENT-A','OLD-PARENT','OLD-PARENT',{keepDuplicateDep:true}],
-      ['CHILD-A','EQUIPMENT-A'],
+      ['EQUIPMENT-ALPHA','OLD-PARENT','OLD-PARENT',{keepDuplicateDep:true}],
+      ['CHILD-ALPHA','EQUIPMENT-ALPHA'],
       ['MATCHED-EQUIPMENT','OLD-PARENT'],
       ['MISSING-UPN','OLD-PARENT'],
       ['MISSING-SYSTEM-PARENT','OLD-PARENT']
@@ -450,7 +466,7 @@ test('MEL UPN checks evaluate every extracted Comparison Equipment ID', () => {
     registerMelSystemParentIssues(root,plan);
     const newParent=gis.kids.get('NEW-PARENT');
     const built=buildRoots(root),builtEquipment=built[0].children[0].children
-      .find(node=>node.name==='NEW-PARENT').children.find(node=>node.name==='EQUIPMENT-A');
+      .find(node=>node.name==='NEW-PARENT').children.find(node=>node.name==='EQUIPMENT-ALPHA');
     JSON.stringify({
       first:firstSystemParentTag('NEW-PARENT; ALTERNATE-PARENT'),
       moved,
@@ -459,7 +475,7 @@ test('MEL UPN checks evaluate every extracted Comparison Equipment ID', () => {
       gisKids:[...gis.kids.keys()],
       oldKids:[...oldParent.kids.keys()],
       newKids:[...newParent.kids.keys()],
-      descendants:[...newParent.kids.get('EQUIPMENT-A').kids.keys()],
+      descendants:[...newParent.kids.get('EQUIPMENT-ALPHA').kids.keys()],
       hierarchyDependency:nodeDep(builtEquipment),
       repaired,
       placements:S.placements.map(item=>({branch:item.branchName,status:item.status})),
@@ -470,13 +486,13 @@ test('MEL UPN checks evaluate every extracted Comparison Equipment ID', () => {
     first: 'NEW-PARENT',
     moved: 1,
     correction: {
-      equip: 'EQUIPMENT-A',
+      equip: 'EQUIPMENT-ALPHA',
       currentParent: 'OLD-PARENT',
       newParent: 'NEW-PARENT',
       sourceParent: 'GIS-1',
       equipmentUpn: '373',
       parentUpn: '372',
-      equipmentMelTag: 'EQUIPMENT-A',
+      equipmentMelTag: 'EQUIPMENT-ALPHA',
       parentMelTag: 'OLD-PARENT',
     },
     warnings: [
@@ -485,16 +501,16 @@ test('MEL UPN checks evaluate every extracted Comparison Equipment ID', () => {
     ],
     gisKids: ['OLD-PARENT', 'NEW-PARENT'],
     oldKids: ['MATCHED-EQUIPMENT', 'MISSING-UPN', 'MISSING-SYSTEM-PARENT'],
-    newKids: ['EQUIPMENT-A'],
-    descendants: ['CHILD-A'],
+    newKids: ['EQUIPMENT-ALPHA'],
+    descendants: ['CHILD-ALPHA'],
     hierarchyDependency: 'OLD-PARENT',
     repaired: [
       { equip: '602 Medium Voltage', parent: '', dep: '', keepDuplicateDep: false },
       { equip: 'GIS-1', parent: '602 Medium Voltage', dep: '', keepDuplicateDep: false },
       { equip: 'OLD-PARENT', parent: 'GIS-1', dep: '', keepDuplicateDep: false },
       { equip: 'NEW-PARENT', parent: 'GIS-1', dep: '', keepDuplicateDep: false },
-      { equip: 'EQUIPMENT-A', parent: 'NEW-PARENT', dep: 'OLD-PARENT', keepDuplicateDep: false },
-      { equip: 'CHILD-A', parent: 'EQUIPMENT-A', dep: '', keepDuplicateDep: false },
+      { equip: 'EQUIPMENT-ALPHA', parent: 'NEW-PARENT', dep: 'OLD-PARENT', keepDuplicateDep: false },
+      { equip: 'CHILD-ALPHA', parent: 'EQUIPMENT-ALPHA', dep: '', keepDuplicateDep: false },
       { equip: 'MATCHED-EQUIPMENT', parent: 'OLD-PARENT', dep: '', keepDuplicateDep: false },
       { equip: 'MISSING-UPN', parent: 'OLD-PARENT', dep: '', keepDuplicateDep: false },
       { equip: 'MISSING-SYSTEM-PARENT', parent: 'OLD-PARENT', dep: '', keepDuplicateDep: false },
@@ -505,11 +521,11 @@ test('MEL UPN checks evaluate every extracted Comparison Equipment ID', () => {
     ],
     checks: {
       'old-parent': 'matched',
-      'child-a': 'not-found',
+      'child-alpha': 'not-found',
       'matched-equipment': 'matched',
       'missing-upn': 'warning',
       'missing-system-parent': 'warning',
-      'equipment-a': 'corrected',
+      'equipment-alpha': 'corrected',
     },
   })
 })
@@ -1147,13 +1163,13 @@ test('comparison accepts a matching tag within semicolon-separated working depen
   assert.match(html, /if\(!sameWorkingDependencyValue\(r\.curDep,r\.wcDep\)\)/)
   const value = runInNewContext(`${customScript}
     JSON.stringify([
-      sameWorkingDependencyValue('TAG-A','TAG-A; TAG-B'),
-      sameWorkingDependencyValue('TAG-B','TAG-A ; TAG-B [Existing]'),
-      sameWorkingDependencyValue('TAG-C','TAG-A; TAG-B'),
-      sameWorkingDependencyValue('TAG-A','TAG-A'),
-      comparisonValuesMatch('PARENT','TAG-A','PARENT','TAG-B; TAG-A'),
-      comparisonValuesMatch('PARENT','TAG-A','PARENT','TAG-B; TAG-C'),
-      comparisonValuesMatch('PARENT','TAG-A','OTHER','TAG-B; TAG-A')
+      sameWorkingDependencyValue('TAG-ALPHA','TAG-ALPHA; TAG-BRAVO'),
+      sameWorkingDependencyValue('TAG-BRAVO','TAG-ALPHA ; TAG-BRAVO [Existing]'),
+      sameWorkingDependencyValue('TAG-CHARLIE','TAG-ALPHA; TAG-BRAVO'),
+      sameWorkingDependencyValue('TAG-ALPHA','TAG-ALPHA'),
+      comparisonValuesMatch('PARENT','TAG-ALPHA','PARENT','TAG-BRAVO; TAG-ALPHA'),
+      comparisonValuesMatch('PARENT','TAG-ALPHA','PARENT','TAG-BRAVO; TAG-CHARLIE'),
+      comparisonValuesMatch('PARENT','TAG-ALPHA','OTHER','TAG-BRAVO; TAG-ALPHA')
     ]);
   `, { console, setTimeout, clearTimeout })
   assert.deepEqual(JSON.parse(value), [true, true, false, true, true, false, false])
@@ -1298,12 +1314,12 @@ test('MAH suffix variants become dependencies beneath the base MAH parent', () =
     hierarchy: {
       hasBase: true,
       hasFull: false,
-      childDependency: 'R22-MAH777-99-00_MED-B',
+      childDependency: 'R22-MAH777-99-00_MED',
     },
     rows: [
       { equip: 'UPSTREAM', parent: '', dep: '', keepDuplicateDep: false },
       { equip: 'R22-MAH777-99-00', parent: 'UPSTREAM', dep: '', keepDuplicateDep: false },
-      { equip: 'XYZ', parent: 'R22-MAH777-99-00', dep: 'R22-MAH777-99-00_MED-B', keepDuplicateDep: false },
+      { equip: 'XYZ', parent: 'R22-MAH777-99-00', dep: 'R22-MAH777-99-00_MED', keepDuplicateDep: false },
       { equip: 'UNCHANGED', parent: 'OTHER-PARENT', dep: 'OTHER-DEPENDENCY', keepDuplicateDep: false },
     ],
   })
