@@ -29,6 +29,8 @@ body{font-family:var(--sans);color:var(--ink);background:var(--bg);
   background-image:linear-gradient(var(--bg-grid) 1px,transparent 1px),linear-gradient(90deg,var(--bg-grid) 1px,transparent 1px);
   background-size:26px 26px;background-position:-1px -1px;-webkit-font-smoothing:antialiased;line-height:1.45}
 .ic{width:18px;height:18px;display:inline-block;flex:0 0 auto;vertical-align:middle}
+.icon-btn{padding:0;line-height:0}
+.icon-btn>.ic{display:block;margin:auto}
 button{font-family:inherit}
 mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padding:0 1px}
 
@@ -279,6 +281,7 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .lcount{font-size:11px;font-family:var(--mono);color:var(--accent-700);letter-spacing:.5px;text-transform:uppercase;margin-top:3px;min-height:14px;font-weight:680}
 
 .modal-back{position:fixed;inset:0;z-index:65;background:rgba(28,30,34,.42);backdrop-filter:blur(2px);display:none;place-items:center;padding:20px}
+.modal-back[hidden]{display:none!important}
 .modal-back.show{display:grid;animation:mfade .14s ease}
 @keyframes mfade{from{opacity:0}to{opacity:1}}
 .modal-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:22px 22px 18px;max-width:430px;width:100%;animation:mpop .16s ease}
@@ -290,7 +293,7 @@ mark{background:var(--accent-200);color:var(--accent-700);border-radius:3px;padd
 .modal-actions .btn[data-v=cancel]{margin-right:auto}
 .update-card{position:relative;max-width:500px}
 .update-card.wide{max-width:620px;height:min(500px,calc(100vh - 40px));display:flex;flex-direction:column}
-.update-card .update-x{position:absolute;top:12px;right:12px}
+.update-card .update-x{position:absolute;top:12px;right:12px;z-index:2}
 .update-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin:14px 0 16px}
 .update-tab{border:none;background:transparent;color:var(--ink-3);padding:9px 12px;margin-bottom:-1px;border-bottom:2px solid transparent;font:inherit;font-size:13px;font-weight:650;cursor:pointer}
 .update-tab:hover{color:var(--ink)}
@@ -597,9 +600,9 @@ body.result-fullscreen{overflow:hidden}
     <div class="modal-actions" id="modalActions"></div>
   </div>
 </div>
-<div id="updateModal" class="modal-back update-back" role="dialog" aria-modal="true" aria-labelledby="updateTitle" aria-hidden="true">
+<div id="updateModal" class="modal-back update-back" role="dialog" aria-modal="true" aria-labelledby="updateTitle" aria-hidden="true" hidden>
   <div class="modal-card update-card wide">
-    <button class="xbtn update-x" id="updateCloseX" aria-label="Close update modal"></button>
+    <button class="xbtn icon-btn update-x" id="updateCloseX" type="button" aria-label="Close changelog or update modal"></button>
     <div class="modal-title" id="updateTitle">Update Available</div>
     <div class="update-tabs" id="updateTabs">
       <button class="update-tab on" id="updateTab" type="button">Update</button>
@@ -620,7 +623,7 @@ body.result-fullscreen{overflow:hidden}
 </div>
 <div id="drawer" class="drawer-back" role="dialog" aria-modal="true" aria-label="Cable schedule details">
   <aside class="drawer">
-    <div class="drawer-head"><div class="drawer-title" id="drawerTitle"></div><button class="xbtn" id="drawerClose" aria-label="Close details"></button></div>
+    <div class="drawer-head"><div class="drawer-title" id="drawerTitle"></div><button class="xbtn icon-btn" id="drawerClose" type="button" aria-label="Close details"></button></div>
     <div class="drawer-body" id="drawerBody"></div>
   </aside>
 </div>
@@ -654,13 +657,22 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.25';
+const APP_VERSION = '1.1.26';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
+let updateModalDismissed=false;
 const CHANGELOG=[
+  {
+    version:'1.1.26',
+    date:'2026-07-23T15:17:44Z',
+    type:'fix',
+    stats:{fixes:1,improvements:1},
+    notes:`- Fixed the changelog close button sometimes reopening after dismissal
+- Improved centering for icon-only buttons throughout the app`
+  },
   {
     version:'1.1.25',
     date:'2026-07-23T14:14:15Z',
@@ -1135,7 +1147,7 @@ function setUpdateTab(tab){
 }
 function closeUpdateModal(){
   const m=$('#updateModal');if(!m)return;
-  m.classList.remove('show');m.setAttribute('aria-hidden','true');
+  updateModalDismissed=true;m.classList.remove('show');m.setAttribute('aria-hidden','true');m.hidden=true;
 }
 function openUpdateModal(tab){
   $('#changelogPanel').innerHTML=renderChangelog(pendingUpdateInfo);
@@ -1143,7 +1155,7 @@ function openUpdateModal(tab){
     const entry=btn.closest('.change-entry');if(entry)entry.classList.toggle('closed');
   });
   setUpdateTab(tab);
-  const m=$('#updateModal');m.classList.add('show');m.setAttribute('aria-hidden','false');
+  const m=$('#updateModal');m.hidden=false;m.classList.add('show');m.setAttribute('aria-hidden','false');
 }
 function showUpdateModal(info){
   pendingUpdateInfo=info;
@@ -1158,6 +1170,7 @@ function showUpdateModal(info){
   openUpdateModal('update');
 }
 function showAppChangelog(){
+  updateModalDismissed=false;
   pendingUpdateInfo=null;
   $('#updateStatus').innerHTML='';
   openUpdateModal('changelog');
@@ -1178,15 +1191,17 @@ async function handleUpdateDownload(){
 function initUpdateCheck(){
   $('#updateCloseX').innerHTML=ic('x');
   $('#updateSkip').onclick=closeUpdateModal;
-  $('#updateCloseX').onclick=closeUpdateModal;
   $('#updateDownload').onclick=handleUpdateDownload;
   $('#updateTab').onclick=()=>setUpdateTab('update');
   $('#changelogTab').onclick=()=>setUpdateTab('changelog');
   $('#versionLink').textContent='v'+APP_VERSION;
   $('#versionLink').onclick=showAppChangelog;
   const m=$('#updateModal');
-  m.addEventListener('click',e=>{if(e.target===m)closeUpdateModal();});
-  if(!isPwaHostedApp())checkForAppUpdate().then(info=>{if(info)showUpdateModal(info);});
+  m.addEventListener('click',e=>{
+    if(e.target.closest&&e.target.closest('#updateCloseX')){e.preventDefault();closeUpdateModal();return;}
+    if(e.target===m)closeUpdateModal();
+  });
+  if(!isPwaHostedApp())checkForAppUpdate().then(info=>{if(info&&!updateModalDismissed)showUpdateModal(info);});
 }
 
 const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:new Set(),melSel:new Set(),override:{},aoaCache:new Map(),
@@ -1720,7 +1735,7 @@ function renderWorkCopy(){
     const n=S.wcRows?S.wcRows.length:0,ok=n>0;
     slot.innerHTML=`<div class="frow ${ok?'':'err'}"><span class="ficon cable">${ic('git-branch')}</span>
       <div class="fmeta"><div class="fname">${esc(S.workCopy.name)}</div><span class="fsub ${ok?'':'warn'}">${ok?n+' rows · Equipment ID / Parent / Dependency detected':'No Equipment ID column found'}</span></div>
-      <button class="xbtn" id="wcremove" aria-label="Remove working copy">${ic('x')}</button></div>`;
+      <button class="xbtn icon-btn" id="wcremove" type="button" aria-label="Remove working copy">${ic('x')}</button></div>`;
     $('#wcremove').onclick=()=>{S.workCopy=null;S.wcRows=null;renderWorkCopy();};
   }else{
     slot.innerHTML=`<button type="button" class="btn sm" id="wcbrowse">${ic('upload')}Add working copy</button><input id="wcfile" type="file" accept=".xlsx,.xls,.csv" hidden>`;
@@ -1748,7 +1763,7 @@ function renderFileList(){
     const sub=f.error?`<span class="fsub warn">${esc(f.error)}</span>`:`<span class="fsub">${f.sheets.length} tab${f.sheets.length!==1?'s':''} · ${fmtSize(f.size)}</span>`;
     return `<div class="frow ${f.error?'err':''}"><span class="ficon ${k.cls}">${ic(k.name)}</span>
       <div class="fmeta"><div class="fname">${esc(f.name)}</div>${sub}</div>
-      <button class="xbtn" data-id="${f.id}" aria-label="Remove ${esc(f.name)}">${ic('x')}</button></div>`;
+      <button class="xbtn icon-btn" type="button" data-id="${f.id}" aria-label="Remove ${esc(f.name)}">${ic('x')}</button></div>`;
   }).join('');
   const okFiles=S.files.filter(f=>!f.error&&f.sheets.length);
   const tabs=okFiles.reduce((a,f)=>a+f.sheets.length,0);
@@ -2858,11 +2873,11 @@ function renderResult(){
       ${(S.hasCable||placementCount)?tab('review','Review','triangle-alert',st.review):''}
       ${S.wcRows?tab('compare','Comparison','git-branch',S.compare.length):''}
       <button class="statstoggle" id="statsToggle" aria-pressed="${S.showStats}" title="${S.showStats?'Hide stats':'Show stats'}">${ic(S.showStats?'chevrons-up':'chevrons-down')}<span>${S.showStats?'Hide stats':'Show stats'}</span></button>
-      <button class="btn fullbtn" id="fullscreenToggle" title="${S.resultFullscreen?'Exit full screen':'Full screen'}" aria-label="${S.resultFullscreen?'Exit full screen':'Full screen'}">${ic(S.resultFullscreen?'minimize-2':'maximize-2')}</button>
+      <button class="btn icon-btn fullbtn" id="fullscreenToggle" title="${S.resultFullscreen?'Exit full screen':'Full screen'}" aria-label="${S.resultFullscreen?'Exit full screen':'Full screen'}">${ic(S.resultFullscreen?'minimize-2':'maximize-2')}</button>
     </div>
     <div id="panel-tree" class="panel" ${S.tab!=='tree'?'hidden':''}>
       <div class="toolbar">
-        <div class="search">${ic('search')}<input id="q" type="text" placeholder="Search by ID Name or tag…" autocomplete="off" spellcheck="false"><button class="qx" id="qx" aria-label="Clear search">${ic('x')}</button></div>
+        <div class="search">${ic('search')}<input id="q" type="text" placeholder="Search by ID Name or tag…" autocomplete="off" spellcheck="false"><button class="qx icon-btn" id="qx" type="button" aria-label="Clear search">${ic('x')}</button></div>
         <button class="chip ${S.idOnly?'on':''}" id="idOnly" aria-pressed="${S.idOnly}" title="Match only ID Names (final loads)">${ic('tag')}ID Names only</button>
         <button class="chip ${S.showSpares?'on':''}" id="tgSpares" aria-pressed="${S.showSpares}" title="Show spares (SP- prefix)">${ic('square-stack')}Spares</button>
         <button class="chip ${S.showSpaces?'on':''}" id="tgSpaces" aria-pressed="${S.showSpaces}" title="Show spaces (&quot;Space&quot;)">${ic('minus')}Spaces</button>
@@ -3104,7 +3119,7 @@ function renderPlacementReviewPanel(el){
       <span class="placement-state">${ic(item.status==='suggested'?'circle-check':'triangle-alert')}${placementState(item,false)}</span></button>`;
   }).join('')}</div>`:`<div class="note info">${ic('circle-check')}<div>${all.length?'No placement items match this filter.':'No branches are waiting for placement review.'}</div></div>`;
   el.innerHTML=reviewModesHtml()+`<div class="note warn" style="margin-bottom:12px">${ic('triangle-alert')}<div>Review branches that were auto-placed, could not be anchored safely, or could not complete a MEL parent check. Moving a branch keeps its full subtree together.</div></div>
-    <div class="toolbar"><div class="search">${ic('search')}<input id="placementFilter" type="text" placeholder="Filter branches…" value="${esc(S.placementQuery)}" autocomplete="off"><button class="qx ${S.placementQuery?'show':''}" id="placementFilterX">${ic('x')}</button></div>
+    <div class="toolbar"><div class="search">${ic('search')}<input id="placementFilter" type="text" placeholder="Filter branches…" value="${esc(S.placementQuery)}" autocomplete="off"><button class="qx icon-btn ${S.placementQuery?'show':''}" id="placementFilterX" type="button" aria-label="Clear placement filter">${ic('x')}</button></div>
     ${S.lastPlacementMove?`<button class="btn sm spacer" id="placementUndo">${ic('rotate-ccw')}Undo last change</button>`:''}</div>${list}`;
   wireReviewPanel();
   const input=$('#placementFilter');if(input){let timer;input.oninput=()=>{clearTimeout(timer);timer=setTimeout(()=>{S.placementQuery=input.value;renderReviewPanel();},180);};}
@@ -3130,7 +3145,7 @@ function renderReviewPanel(){
   el.innerHTML=reviewModesHtml()+`
     <div class="note warn" style="margin-bottom:12px">${ic('triangle-alert')}<div>Cable Schedule loads with <b>no exact match</b> in the Easy Power hierarchy. Up to <b>3 possible matches</b> (best first) via strict near-matching — e.g. a <code>-</code> swapped for <code>_</code>. Click a column to sort; set a minimum % to filter weak matches.</div></div>
     <div class="toolbar">
-      <div class="search">${ic('search')}<input id="rq" type="text" placeholder="Filter review…" value="${esc(S.revSearch)}" autocomplete="off"><button class="qx ${S.revSearch?'show':''}" id="rqx">${ic('x')}</button></div>
+      <div class="search">${ic('search')}<input id="rq" type="text" placeholder="Filter review…" value="${esc(S.revSearch)}" autocomplete="off"><button class="qx icon-btn ${S.revSearch?'show':''}" id="rqx" type="button" aria-label="Clear review filter">${ic('x')}</button></div>
       <label class="pctmin">${ic('filter')}<span>match ≥</span><input id="rpct" type="number" min="0" max="100" step="1" placeholder="—" value="${S.revMinPct!=null?S.revMinPct:''}"><span>%</span></label>
       <span class="stream-ind" id="revInd"></span>
       <span class="hint spacer" id="revCnt"></span>
@@ -3273,7 +3288,7 @@ function renderComparePanel(){
       <label class="selectctl" title="Filter by changed field">${ic('filter')}<select id="cmpDiff" aria-label="Filter comparison differences">${dopt('all','All fields')}${dopt('parent','Parent differs')}${dopt('dep','Dependency differs')}${dopt('both','Both differ')}</select></label>
       <span class="stream-ind" id="cmpInd"></span>
       <span class="hint" id="cmpCnt"></span>
-      <div class="search" style="margin-left:auto">${ic('search')}<input id="cq" type="text" placeholder="Find equipment…" value="${esc(S.cmpSearch)}" autocomplete="off"><button class="qx ${S.cmpSearch?'show':''}" id="cqx">${ic('x')}</button></div>
+      <div class="search" style="margin-left:auto">${ic('search')}<input id="cq" type="text" placeholder="Find equipment…" value="${esc(S.cmpSearch)}" autocomplete="off"><button class="qx icon-btn ${S.cmpSearch?'show':''}" id="cqx" type="button" aria-label="Clear comparison filter">${ic('x')}</button></div>
     </div>
     <div class="tablecard" id="cmpCard"><table class="dtable cmp"><thead><tr><th rowspan="2" class="sortable ${sc('equip')}" data-sort="equip">Equipment ID</th><th rowspan="2" class="sortable ${sc('status')}" data-sort="status">Status</th><th colspan="2">Closest Parent</th><th colspan="2">Dependency</th></tr><tr><th class="sortable sub ${sc('curParent')}" data-sort="curParent">Extracted</th><th class="sortable sub ${sc('wcParent')}" data-sort="wcParent">Working copy</th><th class="sortable sub ${sc('curDep')}" data-sort="curDep">Extracted</th><th class="sortable sub ${sc('wcDep')}" data-sort="wcDep">Working copy</th></tr></thead><tbody id="cmpBody"></tbody></table></div>`;
   wireComparePanel();
@@ -3298,8 +3313,8 @@ function rowInner(node,prefixArr,isLast,isRoot,hl){
   const pmdBadge=node.pmdPanel?`<span class="dep pmd-link" title="Matched PMD panel">${ic('database')}${esc(node.pmdPanel)}</span>`:'';
   const descTitle=node.isInstrument&&node.description?` title="${esc(node.description)}"`:'';
   const nk=clean(node.name).toLowerCase();
-  const infoBtn=(S.depDetail.has(nk)||S.epDetail.has(nk)||S.cableStruckTags.has(tagKey(node.name))||melResolvedRecord(node.name)||S.melParentChecks.has(tagKey(node.name))||node.pmdKey||node.pmdPanel)?`<button class="rowinfo" data-detail="${node.id}" title="Details" aria-label="Details for ${esc(node.name)}">${ic('info')}</button>`:'';
-  const placementBtn=node.placementId?`<button class="placement-flag" data-placement="${node.placementId}" title="Review this branch placement" aria-label="Review placement for ${esc(node.name)}">${ic('triangle-alert')}</button>`:'';
+  const infoBtn=(S.depDetail.has(nk)||S.epDetail.has(nk)||S.cableStruckTags.has(tagKey(node.name))||melResolvedRecord(node.name)||S.melParentChecks.has(tagKey(node.name))||node.pmdKey||node.pmdPanel)?`<button class="rowinfo icon-btn" type="button" data-detail="${node.id}" title="Details" aria-label="Details for ${esc(node.name)}">${ic('info')}</button>`:'';
+  const placementBtn=node.placementId?`<button class="placement-flag icon-btn" type="button" data-placement="${node.placementId}" title="Review this branch placement" aria-label="Review placement for ${esc(node.name)}">${ic('triangle-alert')}</button>`:'';
   if(isRoot){
     return `<div class="row root ${hasKids?'':'leafrow'}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
       ${hasKids?`<span class="twist">${ic('chevron-right')}</span>`:'<span class="twist"></span>'}

@@ -118,6 +118,13 @@ test('changelog modal is available from update tabs and the version link', () =>
   assert.match(html, /function showAppChangelog\(\)/)
   assert.match(html, /id="versionLink"/)
   assert.match(html, /\$\('#versionLink'\)\.onclick=showAppChangelog/)
+  assert.match(html, /id="updateCloseX" type="button" aria-label="Close changelog or update modal"/)
+  assert.match(html, /let updateModalDismissed=false/)
+  assert.match(html, /updateModalDismissed=true;[^;]*m\.classList\.remove\('show'\);[^;]*m\.setAttribute\('aria-hidden','true'\);m\.hidden=true/)
+  assert.match(html, /m\.hidden=false;m\.classList\.add\('show'\);m\.setAttribute\('aria-hidden','false'\)/)
+  assert.match(html, /e\.target\.closest&&e\.target\.closest\('#updateCloseX'\)/)
+  assert.match(html, /if\(info&&!updateModalDismissed\)showUpdateModal\(info\)/)
+  assert.match(html, /\.modal-back\[hidden\]\{display:none!important\}/)
   assert.match(html, /\.change-entry\.major/)
   assert.match(html, /\.change-entry\.feature/)
   assert.match(html, /\.change-entry\.fix/)
@@ -126,6 +133,18 @@ test('changelog modal is available from update tabs and the version link', () =>
   assert.match(html, /\.changelog-intro\{[^}]*flex:0 0 auto/)
   assert.match(html, /\.changelog-list\{[^}]*flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-x:hidden/)
   assert.match(html, /\.change-entry\{[^}]*flex:0 0 auto/)
+})
+
+test('icon-only controls share centered SVG button styling', () => {
+  assert.match(html, /\.icon-btn\{padding:0;line-height:0\}/)
+  assert.match(html, /\.icon-btn>\.ic\{display:block;margin:auto\}/)
+  assert.match(html, /class="xbtn icon-btn update-x"/)
+  assert.match(html, /class="xbtn icon-btn" id="drawerClose"/)
+  assert.match(html, /class="btn icon-btn fullbtn"/)
+  assert.match(html, /class="rowinfo icon-btn"/)
+  assert.match(html, /class="placement-flag icon-btn"/)
+  assert.match(html, /class="qx icon-btn"/)
+  assert.match(html, /\.update-card \.update-x\{[^}]*z-index:2/)
 })
 
 test('equipment tags consistently drop trailing -P and -S suffixes', () => {
