@@ -429,6 +429,10 @@ body.result-fullscreen{overflow:hidden}
 .dtable td.mono{font-family:var(--mono);font-size:12.5px}
 .dtable td.diff{background:rgba(214,108,32,.10);color:var(--accent-700);font-weight:600}
 .dtable td.empty{text-align:center;color:var(--ink-3);padding:22px}
+.copy-tag{cursor:copy;border-radius:4px;transition:color .12s ease,background .12s ease,box-shadow .12s ease;-webkit-tap-highlight-color:rgba(234,88,12,.14)}
+.copy-tag:hover{color:var(--accent-700);background:var(--accent-100);box-shadow:0 0 0 2px var(--accent-100)}
+.copy-tag.copied{color:var(--ok);background:var(--ok-bg);box-shadow:0 0 0 2px var(--ok-bg)}
+.tag-sep{color:var(--ink-3)}
 .pm{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;padding:2px 8px;border-radius:6px;background:var(--surface-2);color:var(--ink-2);border:1px solid var(--border)}
 .pmcell{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
 .pm.best{background:var(--accent-100);color:var(--accent-700);border-color:var(--accent-200);font-weight:680}
@@ -657,7 +661,7 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.26';
+const APP_VERSION = '1.1.27';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
@@ -665,6 +669,13 @@ let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 let updateModalDismissed=false;
 const CHANGELOG=[
+  {
+    version:'1.1.27',
+    date:'2026-07-23T16:12:31Z',
+    type:'feature',
+    stats:{features:1},
+    notes:`- Added click-to-copy tags throughout Hierarchy, Review, and Comparison views`
+  },
   {
     version:'1.1.26',
     date:'2026-07-23T15:17:44Z',
@@ -1379,7 +1390,45 @@ async function deferredRun(msg,sub,work,delay){
 }
 let toastT;
 function toast(m){const el=$('#toast');el.textContent=m;el.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('show'),1700);}
-function copyText(t){if(navigator.clipboard){navigator.clipboard.writeText(t).then(()=>toast('Copied  '+t)).catch(()=>toast(t));}else toast(t);}
+function markCopiedTag(source){
+  if(!source)return;
+  source.classList.add('copied');clearTimeout(source._copyTimer);
+  source._copyTimer=setTimeout(()=>source.classList.remove('copied'),900);
+}
+function legacyCopyText(t){
+  const area=document.createElement('textarea');area.value=t;area.readOnly=true;
+  area.style.cssText='position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none';
+  document.body.appendChild(area);area.focus({preventScroll:true});area.select();area.setSelectionRange(0,area.value.length);
+  let copied=false;try{copied=document.execCommand('copy');}catch(_){}
+  area.remove();return copied;
+}
+function copyText(t,source){
+  t=clean(t);if(!t)return;
+  const done=()=>{markCopiedTag(source);toast('Copied  '+t);};
+  const fallback=()=>{if(legacyCopyText(t))done();else toast(t);};
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(done).catch(fallback);
+  else fallback();
+}
+function copyableTag(value){const tag=clean(value);return tag&&!/^(?:N\/A|—|-)$/i.test(tag);}
+function copyTagHtml(value,displayValue,cls){
+  const tag=clean(value),display=displayValue==null?tag:clean(displayValue);
+  if(!copyableTag(tag))return esc(display||'—');
+  return `<span class="copy-tag${cls?' '+cls:''}" data-copy-tag="${esc(tag)}" title="Copy ${esc(tag)}">${esc(display)}</span>`;
+}
+function copyTagListHtml(value){
+  const display=registerDisplayValue(value);
+  if(!copyableTag(display))return esc(display);
+  return display.split(/\s*;\s*/).map(tag=>copyTagHtml(tag)).join('<span class="tag-sep">; </span>');
+}
+function wireCopyTags(root){
+  if(!root||root._copyTagsWired)return;
+  root.addEventListener('click',e=>{
+    const target=e.target.closest&&e.target.closest('[data-copy-tag]');
+    if(!target||!root.contains(target))return;
+    e.preventDefault();e.stopPropagation();copyText(target.dataset.copyTag,target);
+  },true);
+  root._copyTagsWired=true;
+}
 
 /* ---- column detection ---- */
 function findHeaderRow(aoa){
@@ -3042,11 +3091,11 @@ function mountVirtualRows(tbodySel,rows,makeRow,emptyHtml,opts){
 /* ---- Review panel (cable not in Easy Power) ---- */
 function reviewMakeRow(r){
   const pm=r.matches.length
-    ? `<div class="pmcell">${r.matches.map((m,i)=>`<span class="pm ${i===0?'best':''}">${esc(m.match)}<span class="pmpct">${m.pct}%</span></span>`).join('')}</div>`
+    ? `<div class="pmcell">${r.matches.map((m,i)=>`<span class="pm copy-tag ${i===0?'best':''}" data-copy-tag="${esc(m.match)}" title="Copy ${esc(m.match)}">${esc(m.match)}<span class="pmpct">${m.pct}%</span></span>`).join('')}</div>`
     : '<span class="muted">—</span>';
   const best=r.matches[0];
   const pct=best?`<span class="pct ${best.pct>=95?'hi':''}">${best.pct}%</span>`:'';
-  return `<tr><td class="mono">${esc(r.load)}</td><td class="mono">${esc(r.panel||'—')}</td><td class="mono">${esc(r.circuit||'—')}</td><td>${pm}</td><td>${pct}</td></tr>`;
+  return `<tr><td class="mono">${copyTagHtml(r.load)}</td><td class="mono">${copyTagHtml(r.panel||'—')}</td><td class="mono">${esc(r.circuit||'—')}</td><td>${pm}</td><td>${pct}</td></tr>`;
 }
 function sortReviewList(rows){
   const s=S.revSort;if(!s)return rows;
@@ -3091,6 +3140,7 @@ function refreshReview(){
   renderReviewRowsVirtual(rec,key,el);
 }
 function wireReviewPanel(){
+  wireCopyTags($('#panel-review'));
   $$('#panel-review [data-review-mode]').forEach(btn=>btn.onclick=()=>{if(S.reviewMode===btn.dataset.reviewMode)return;S.reviewMode=btn.dataset.reviewMode;renderReviewPanel();});
   const rq=$('#rq');if(rq){let d;rq.addEventListener('input',()=>{clearTimeout(d);d=setTimeout(()=>{S.revSearch=rq.value;refreshReview();},220);});}
   const rqx=$('#rqx');if(rqx)rqx.onclick=()=>{S.revSearch='';const i=$('#rq');if(i){i.value='';i.focus();}$('#rqx').classList.remove('show');refreshReview();};
@@ -3113,9 +3163,10 @@ function placementState(item,detail){
 function renderPlacementReviewPanel(el){
   const q=clean(S.placementQuery).toLowerCase(),all=activePlacements(),items=all.filter(item=>!q||[item.branchName,item.currentParent,item.suggestedParent,item.source,item.reason].join(' ').toLowerCase().includes(q));
   const list=items.length?`<div class="placement-list">${items.map(item=>{
-    const descendants=item.node?rawSubtreeCount(item.node):0,path=(item.path&&item.path.length?item.path:[item.currentParent,item.branchName].filter(Boolean)).join(' / ');
-    return `<button class="placement-item" data-placement="${item.id}"><div><div class="placement-name">${esc(item.branchName)}</div><div class="placement-meta">${descendants} descendant${descendants===1?'':'s'} · ${esc(item.source)}</div></div>
-      <div class="placement-reason">${esc(item.reason)}<span class="placement-path">${esc(path||'Not currently placed')}</span></div>
+    const descendants=item.node?rawSubtreeCount(item.node):0,path=item.path&&item.path.length?item.path:[item.currentParent,item.branchName].filter(Boolean);
+    const pathHtml=path.length?path.map(tag=>copyTagHtml(tag)).join('<span class="tag-sep"> / </span>'):'Not currently placed';
+    return `<button class="placement-item" data-placement="${item.id}"><div><div class="placement-name">${copyTagHtml(item.branchName)}</div><div class="placement-meta">${descendants} descendant${descendants===1?'':'s'} · ${esc(item.source)}</div></div>
+      <div class="placement-reason">${esc(item.reason)}<span class="placement-path">${pathHtml}</span></div>
       <span class="placement-state">${ic(item.status==='suggested'?'circle-check':'triangle-alert')}${placementState(item,false)}</span></button>`;
   }).join('')}</div>`:`<div class="note info">${ic('circle-check')}<div>${all.length?'No placement items match this filter.':'No branches are waiting for placement review.'}</div></div>`;
   el.innerHTML=reviewModesHtml()+`<div class="note warn" style="margin-bottom:12px">${ic('triangle-alert')}<div>Review branches that were auto-placed, could not be anchored safely, or could not complete a MEL parent check. Moving a branch keeps its full subtree together.</div></div>
@@ -3199,10 +3250,10 @@ function compareRowsFor(filter,search,diff,sort){
   return sortCompareList(rows,sort);
 }
 function compareRows(){return compareRowsFor(S.cmpFilter,S.cmpSearch,S.cmpDiff,S.cmpSort);}
-function compareMakeCell(a,b,accepted){const diff=!accepted&&!sameWorkingRegisterValue(a,b);return `<td class="mono ${diff?'diff':''}">${esc(registerDisplayValue(a))}</td><td class="mono ${diff?'diff':''}">${esc(registerDisplayValue(b))}</td>`;}
+function compareMakeCell(a,b,accepted){const diff=!accepted&&!sameWorkingRegisterValue(a,b),av=registerDisplayValue(a),bv=registerDisplayValue(b);return `<td class="mono ${diff?'diff':''}">${copyTagListHtml(av)}</td><td class="mono ${diff?'diff':''}">${copyTagListHtml(bv)}</td>`;}
 function compareMakeRow(r){
   const sub=r.status==='nohit'?`<span class="subtle">${r.inCur?'only in extracted':'only in working copy'}</span>`:'';
-  return `<tr class="r-${r.status}"><td class="mono">${esc(r.equip)}</td><td><span class="cbadge ${r.status}">${ic(CMP_ICON[r.status])}${CMP_LABEL[r.status]}</span>${sub}</td>${compareMakeCell(r.curParent,r.wcParent)}${compareMakeCell(r.curDep,r.wcDep,r.acceptedDepMismatch||sameWorkingDependencyValue(r.curDep,r.wcDep))}</tr>`;
+  return `<tr class="r-${r.status}"><td class="mono">${copyTagHtml(r.equip)}</td><td><span class="cbadge ${r.status}">${ic(CMP_ICON[r.status])}${CMP_LABEL[r.status]}</span>${sub}</td>${compareMakeCell(r.curParent,r.wcParent)}${compareMakeCell(r.curDep,r.wcDep,r.acceptedDepMismatch||sameWorkingDependencyValue(r.curDep,r.wcDep))}</tr>`;
 }
 function getCompareRowsCache(filter,search,diff,sort){
   const key=compareRowsCacheKey(filter,search,diff,sort),hit=cacheGet(S.viewCache.compareRows,key);
@@ -3253,6 +3304,7 @@ function refreshCompare(){
   scheduleComparePrewarm(S.cmpFilter,S.cmpSearch,S.cmpDiff,S.cmpSort);
 }
 function wireComparePanel(){
+  wireCopyTags($('#panel-compare'));
   $$('[data-cf]').forEach(b=>b.onclick=()=>{S.cmpFilter=b.dataset.cf;renderComparePanel();});
   const cq=$('#cq');if(cq){let d;cq.addEventListener('input',()=>{clearTimeout(d);d=setTimeout(()=>{S.cmpSearch=cq.value;renderComparePanel();},250);});}
   const cqx=$('#cqx');if(cqx)cqx.onclick=()=>{S.cmpSearch='';renderComparePanel();};
@@ -3309,9 +3361,10 @@ function lblHtml(name,hl){
 function rowInner(node,prefixArr,isLast,isRoot,hl){
   const kids=kidsOf(node),hasKids=kids.length>0;
   const dep=nodeDep(node);
-  const depBadge=dep?`<span class="dep ${node.isLoad?'dep-load':''}" title="${node.isLoad?'Dependency · equipment above':'Dependency · Panel (From)'}">${ic('spline')}${esc(dep)}</span>`:'';
-  const pmdBadge=node.pmdPanel?`<span class="dep pmd-link" title="Matched PMD panel">${ic('database')}${esc(node.pmdPanel)}</span>`:'';
-  const descTitle=node.isInstrument&&node.description?` title="${esc(node.description)}"`:'';
+  const depLabel=node.isLoad?'Dependency · equipment above':'Dependency · Panel (From)';
+  const depBadge=dep?`<span class="dep copy-tag ${node.isLoad?'dep-load':''}" data-copy-tag="${esc(dep)}" title="${esc(depLabel+' · Copy '+dep)}">${ic('spline')}${esc(dep)}</span>`:'';
+  const pmdBadge=node.pmdPanel?`<span class="dep copy-tag pmd-link" data-copy-tag="${esc(node.pmdPanel)}" title="${esc('Matched PMD panel · Copy '+node.pmdPanel)}">${ic('database')}${esc(node.pmdPanel)}</span>`:'';
+  const labelTitle=node.isInstrument&&node.description?` title="${esc(node.description)}"`:` title="${esc('Copy '+node.name)}"`;
   const nk=clean(node.name).toLowerCase();
   const infoBtn=(S.depDetail.has(nk)||S.epDetail.has(nk)||S.cableStruckTags.has(tagKey(node.name))||melResolvedRecord(node.name)||S.melParentChecks.has(tagKey(node.name))||node.pmdKey||node.pmdPanel)?`<button class="rowinfo icon-btn" type="button" data-detail="${node.id}" title="Details" aria-label="Details for ${esc(node.name)}">${ic('info')}</button>`:'';
   const placementBtn=node.placementId?`<button class="placement-flag icon-btn" type="button" data-placement="${node.placementId}" title="Review this branch placement" aria-label="Review placement for ${esc(node.name)}">${ic('triangle-alert')}</button>`:'';
@@ -3319,14 +3372,14 @@ function rowInner(node,prefixArr,isLast,isRoot,hl){
     return `<div class="row root ${hasKids?'':'leafrow'}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
       ${hasKids?`<span class="twist">${ic('chevron-right')}</span>`:'<span class="twist"></span>'}
       <span class="badge-root">${ic('zap')}</span>
-      <span class="lbl"${descTitle}>${lblHtml(node.name,hl)}</span>
+      <span class="lbl copy-tag" data-copy-tag="${esc(node.name)}"${labelTitle}>${lblHtml(node.name,hl)}</span>
       ${depBadge}${pmdBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${placementBtn}${infoBtn}</div>`;
   }
   const marker=hasKids?'<span class="marker branch"></span>':(node.isInstrument?`<span class="marker instrument">${ic('database')}</span>`:node.isLoad?`<span class="marker load">${ic('corner-down-right')}</span>`:node.isId?`<span class="marker leaf">${ic('tag')}</span>`:'<span class="marker dot"></span>');
   return `<div class="row ${hasKids?'':'leafrow'} ${node.isLoad?'is-load':''} ${node.isInstrument?'is-instrument':''} ${node.isSpare?'is-spare':''} ${node.isSpace?'is-space':''}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
     <span class="gut">${gutterHtml(prefixArr,isLast)}</span>
     ${hasKids?`<span class="twist">${ic('chevron-right')}</span>`:'<span class="twist"></span>'}
-    ${marker}<span class="lbl ${hasKids?'':'lbl-leaf'}"${descTitle}>${lblHtml(node.name,hl)}</span>
+    ${marker}<span class="lbl copy-tag ${hasKids?'':'lbl-leaf'}" data-copy-tag="${esc(node.name)}"${labelTitle}>${lblHtml(node.name,hl)}</span>
     ${depBadge}${pmdBadge}${hasKids?`<span class="cnt">${kids.length}</span>`:''}${placementBtn}${infoBtn}</div>`;
 }
 function makeNode(node,prefixArr,isLast,isRoot){
@@ -3337,7 +3390,7 @@ function makeNode(node,prefixArr,isLast,isRoot){
 }
 function wireTree(tree){
   if(!tree||tree._wired)return;
-  tree.addEventListener('click',onTreeClick);tree.addEventListener('keydown',onTreeKey);tree._wired=true;
+  wireCopyTags(tree);tree.addEventListener('click',onTreeClick);tree.addEventListener('keydown',onTreeKey);tree._wired=true;
 }
 function renderTreeCollapsed(){
   cancelExpand();

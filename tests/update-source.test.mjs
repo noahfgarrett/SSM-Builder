@@ -147,6 +147,39 @@ test('icon-only controls share centered SVG button styling', () => {
   assert.match(html, /\.update-card \.update-x\{[^}]*z-index:2/)
 })
 
+test('hierarchy, review, and comparison tags support click-to-copy', () => {
+  assert.match(html, /\.copy-tag\{[^}]*cursor:copy/)
+  assert.match(html, /function wireCopyTags\(root\)/)
+  assert.match(html, /function legacyCopyText\(t\)/)
+  assert.match(html, /document\.execCommand\('copy'\)/)
+  assert.match(html, /\.writeText\(t\)\.then\(done\)\.catch\(fallback\)/)
+  assert.match(html, /root\.addEventListener\('click',[\s\S]*?\},true\)/)
+  assert.match(html, /wireCopyTags\(tree\)/)
+  assert.match(html, /wireCopyTags\(\$\('#panel-review'\)\)/)
+  assert.match(html, /wireCopyTags\(\$\('#panel-compare'\)\)/)
+  assert.match(html, /class="lbl copy-tag" data-copy-tag=/)
+  assert.match(html, /class="dep copy-tag/)
+  assert.match(html, /class="pm copy-tag/)
+  assert.match(html, /copyTagHtml\(r\.load\)/)
+  assert.match(html, /copyTagHtml\(r\.panel\|\|'—'\)/)
+  assert.match(html, /copyTagHtml\(r\.equip\)/)
+  assert.match(html, /copyTagListHtml\(av\)/)
+  assert.match(html, /copyTagListHtml\(bv\)/)
+
+  const value = runInNewContext(`${customScript}
+    JSON.stringify({
+      single: copyTagHtml('TAG-100'),
+      placeholder: copyTagHtml('N/A'),
+      list: copyTagListHtml('TAG-A; TAG-B')
+    });
+  `, { console, setTimeout, clearTimeout })
+  const markup = JSON.parse(value)
+  assert.match(markup.single, /data-copy-tag="TAG-100"/)
+  assert.doesNotMatch(markup.placeholder, /data-copy-tag/)
+  assert.match(markup.list, /data-copy-tag="TAG-A"/)
+  assert.match(markup.list, /data-copy-tag="TAG-B"/)
+})
+
 test('equipment tags consistently drop trailing -P and -S suffixes', () => {
   assert.match(html, /const cleanTag=v=>clean\(v\)\.normalize\('NFKC'\)/)
   const value = runInNewContext(`${customScript}
