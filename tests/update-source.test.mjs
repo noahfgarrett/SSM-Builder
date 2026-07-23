@@ -957,6 +957,8 @@ test('every result tab supports an iPad-friendly full-screen view', () => {
   assert.match(html, /#resultShell\.fullscreen\{position:fixed;inset:0/)
   assert.match(html, /#resultShell\.fullscreen \.panel:not\(\[hidden\]\)\{display:flex/)
   assert.match(html, /#resultShell\.fullscreen \.treecard,#resultShell\.fullscreen \.tablecard\{max-height:none;flex:1/)
+  assert.match(html, /#resultShell\.fullscreen #placementResults\{display:flex;flex:1;min-height:0/)
+  assert.match(html, /#resultShell\.fullscreen \.placement-list\{height:auto;max-height:none;flex:1/)
   assert.match(html, /if\(e\.key==='Escape'&&S\.resultFullscreen\)setResultFullscreen\(false\)/)
 })
 
@@ -967,7 +969,7 @@ test('release packaging uses a versioned HTML asset while raw updates use the ca
 })
 
 test('result tabs use session-only in-memory panel caches', () => {
-  assert.match(html, /viewCache:\{tree:null,review:new Map\(\),reviewRows:new Map\(\),compare:new Map\(\),compareRows:new Map\(\)\}/)
+  assert.match(html, /viewCache:\{tree:null,review:new Map\(\),reviewRows:new Map\(\),placementRows:new Map\(\),compare:new Map\(\),compareRows:new Map\(\)\}/)
   assert.match(html, /const RESULT_PANEL_CACHE_LIMIT=24/)
   assert.match(html, /function clearResultCache\(\)/)
   assert.match(html, /function rememberPanelCache\(name,key,el,scrollSel\)/)
@@ -1023,6 +1025,35 @@ test('large review and comparison tables virtualize rows and cache search work',
   assert.match(html, /scheduleComparePrewarm\(S\.cmpFilter,S\.cmpSearch,S\.cmpDiff,S\.cmpSort\)/)
   assert.match(html, /card\.addEventListener\('scroll',onScroll,\{passive:true\}\)/)
   assert.match(html, /rememberPanelCache\('compare',key,el,'#cmpCard'\)/)
+})
+
+test('Placement Review virtualizes large branch lists and caches filtering', () => {
+  assert.match(html, /const PLACEMENT_ROW_HEIGHT=84/)
+  assert.match(html, /const PLACEMENT_ROW_HEIGHT_NARROW=120/)
+  assert.match(html, /const PLACEMENT_MAX_DOM_ROWS=80/)
+  assert.match(html, /function mountVirtualPlacementRows\(list,items,makeRow,ind\)/)
+  assert.match(html, /list\.dataset\.virtualStart/)
+  assert.match(html, /list\.dataset\.virtualRows/)
+  assert.match(html, /function placementReviewSearchKey\(rec\)/)
+  assert.match(html, /item\.searchKey=placementReviewSearchKey\(item\)/)
+  assert.match(html, /function getPlacementRowsCache\(\)/)
+  assert.match(html, /item\.searchKey\.includes\(q\)/)
+  assert.match(html, /function placementItemHtml\(item\)/)
+  assert.match(html, /mountVirtualPlacementRows\(\$\('#placementList'\),rec\.items,placementItemHtml,ind\)/)
+
+  const value = runInNewContext(`${customScript}
+    S.placements=[];S._placementByKey=new Map();S._placementId=0;
+    for(let i=0;i<10000;i++)registerPlacement({branchName:'TAG-'+String(i).padStart(5,'0'),currentParent:'PARENT-'+i,suggestedParent:'',status:'missing-data',source:'MEL',reason:'Missing parent data'});
+    S.placementQuery='TAG-09999';
+    const started=Date.now(),first=getPlacementRowsCache(),elapsed=Date.now()-started,second=getPlacementRowsCache();
+    JSON.stringify({total:first.total,shown:first.items.length,tag:first.items[0].branchName,cached:first===second,elapsed});
+  `, { console, setTimeout, clearTimeout })
+  const result = JSON.parse(value)
+  assert.equal(result.total, 10000)
+  assert.equal(result.shown, 1)
+  assert.equal(result.tag, 'TAG-09999')
+  assert.equal(result.cached, true)
+  assert.ok(result.elapsed < 100, `Placement Review filtering took ${result.elapsed}ms`)
 })
 
 test('comparison rows support difference filters and sortable columns', () => {

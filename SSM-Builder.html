@@ -397,6 +397,8 @@ body.result-fullscreen{overflow:hidden}
 #resultShell.fullscreen .tabbar{flex:0 0 auto;margin-bottom:12px;background:var(--bg)}
 #resultShell.fullscreen .panel:not([hidden]){display:flex;flex:1;min-height:0;flex-direction:column}
 #resultShell.fullscreen .treecard,#resultShell.fullscreen .tablecard{max-height:none;flex:1;min-height:0}
+#resultShell.fullscreen #placementResults{display:flex;flex:1;min-height:0;flex-direction:column}
+#resultShell.fullscreen .placement-list{height:auto;max-height:none;flex:1;min-height:0}
 
 /* data tables (review / comparison) */
 .tablecard{border:1px solid var(--border);border-radius:12px;overflow:auto;background:var(--surface);max-height:62vh;position:relative}
@@ -476,15 +478,19 @@ body.result-fullscreen{overflow:hidden}
 .review-mode .ic{width:14px;height:14px}
 .review-mode.on{background:var(--surface);color:var(--accent-700);box-shadow:var(--shadow-sm)}
 .review-mode-count{font:700 10.5px var(--mono);color:var(--ink-3)}
-.placement-list{display:flex;flex-direction:column;gap:8px}
-.placement-item{width:100%;display:grid;grid-template-columns:minmax(190px,1fr) minmax(230px,1.3fr) auto;align-items:center;gap:14px;padding:12px 14px;text-align:left;border:1px solid var(--border);border-left:3px solid #d9902f;border-radius:8px;background:var(--surface);color:var(--ink);cursor:pointer;box-shadow:var(--shadow-sm)}
+.placement-list{position:relative;height:min(62vh,var(--placement-total-height));max-height:62vh;min-height:min(var(--placement-row-height),var(--placement-total-height));overflow:auto;contain:strict;overscroll-behavior:contain;scrollbar-gutter:stable}
+.placement-track{position:relative;width:100%}
+.placement-window{position:absolute;inset:0 0 auto;will-change:transform}
+.placement-item{width:100%;height:calc(var(--placement-row-height) - 8px);margin-bottom:8px;box-sizing:border-box;display:grid;grid-template-columns:minmax(190px,1fr) minmax(230px,1.3fr) auto;align-items:center;gap:14px;padding:12px 14px;text-align:left;border:1px solid var(--border);border-left:3px solid #d9902f;border-radius:8px;background:var(--surface);color:var(--ink);cursor:pointer;box-shadow:var(--shadow-sm);overflow:hidden}
 .placement-item:hover,.placement-item:focus-visible{outline:none;border-color:#e7b46b;background:#fffaf2}
 .placement-name{font:680 13px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .placement-meta{font-size:11.5px;color:var(--ink-3);margin-top:2px}
-.placement-reason{font-size:12.5px;color:var(--ink-2);line-height:1.4}
+.placement-reason{min-width:0;font-size:12.5px;color:var(--ink-2);line-height:1.4;overflow:hidden}
+.placement-reason-text{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .placement-path{display:block;margin-top:3px;font:11px var(--mono);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .placement-state{display:inline-flex;align-items:center;gap:5px;font:700 10.5px var(--mono);text-transform:uppercase;color:#9a5b11;white-space:nowrap}
 .placement-state .ic{width:13px;height:13px}
+.placement-range{font:680 11px var(--mono);color:var(--ink-3);white-space:nowrap}
 .placement-search{margin:13px 0 9px}
 .candidate-list{display:flex;flex-direction:column;gap:6px;margin-top:9px}
 .candidate{width:100%;display:flex;align-items:flex-start;gap:9px;padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--surface);text-align:left;cursor:pointer;color:var(--ink)}
@@ -662,7 +668,7 @@ const NAT_COLLATOR=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'}
 const natCmp=(a,b)=>NAT_COLLATOR.compare(String(a),String(b));
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.31';
+const APP_VERSION = '1.1.32';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
@@ -670,6 +676,14 @@ let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 let updateModalDismissed=false;
 const CHANGELOG=[
+  {
+    version:'1.1.32',
+    date:'2026-07-23T18:23:53Z',
+    type:'fix',
+    stats:{fixes:1,improvements:1},
+    notes:`- Fixed Placement Review becoming unresponsive with thousands of branches
+- Improved Placement Review scrolling, filtering, and tab switching for large review lists`
+  },
   {
     version:'1.1.31',
     date:'2026-07-23T17:59:28Z',
@@ -1255,18 +1269,18 @@ const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:n
   cableStruckTags:new Set(),
   pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdSuffixMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
   melRows:[],melByTag:new Map(),melByNorm:new Map(),melBySuffix:new Map(),melByGram:new Map(),melLookupCache:new Map(),melContainingCache:new Map(),melXfmBySuffix:new Map(),melParentChecks:new Map(),
-  epDetail:new Map(),epNameSet:new Set(),review:[],placements:[],_placementByKey:new Map(),_rawSubtreeCounts:new WeakMap(),reviewMode:'cross',placementRevision:0,placementQuery:'',lastPlacementMove:null,
+  epDetail:new Map(),epNameSet:new Set(),review:[],placements:[],_placementByKey:new Map(),_rawSubtreeCounts:new WeakMap(),reviewMode:'cross',placementRevision:0,placementQuery:'',placementScrollTop:0,lastPlacementMove:null,
   workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
   cmpFilter:'all',cmpSearch:'',cmpDiff:'all',cmpSort:null,revSearch:'',revSort:null,revMinPct:null,showStats:true,
   resultFullscreen:false,
-  viewCache:{tree:null,review:new Map(),reviewRows:new Map(),compare:new Map(),compareRows:new Map()}};
+  viewCache:{tree:null,review:new Map(),reviewRows:new Map(),placementRows:new Map(),compare:new Map(),compareRows:new Map()}};
 let _uid=0,_nid=0;
 const fileById=id=>S.files.find(f=>f.id===id);
 const tagKey=value=>cleanTag(value).toLowerCase();
 
 const RESULT_PANEL_CACHE_LIMIT=24;
-let _virtualTok=0,_cmpPrewarmTok=0;
-function clearResultCache(){_virtualTok++;_cmpPrewarmTok++;S.viewCache={tree:null,review:new Map(),reviewRows:new Map(),compare:new Map(),compareRows:new Map()};}
+let _virtualTok=0,_cmpPrewarmTok=0,_placementResizeObserver=null;
+function clearResultCache(){_virtualTok++;_cmpPrewarmTok++;S.viewCache={tree:null,review:new Map(),reviewRows:new Map(),placementRows:new Map(),compare:new Map(),compareRows:new Map()};}
 function panelScroll(scrollSel){
   const el=scrollSel?$(scrollSel):null;
   return el?{top:el.scrollTop,left:el.scrollLeft}:null;
@@ -2295,11 +2309,13 @@ const GIS_PARENT='602 Medium Voltage';
 const SYSTEM_NAMES=new Set([tagKey(GIS_PARENT)]);
 function isSystemName(value){return SYSTEM_NAMES.has(tagKey(value));}
 function placementKey(rec){return [rec.source,tagKey(rec.branchName),tagKey(rec.currentParent),tagKey(rec.suggestedParent),rec.status].join(KEYSEP);}
+function placementReviewSearchKey(rec){return [rec.branchName,rec.currentParent,rec.suggestedParent,rec.source,rec.reason].map(clean).join(' ').toLowerCase();}
 function activePlacements(){return S.placements.filter(rec=>!rec.resolved);}
 function registerPlacement(rec){
   const key=placementKey(rec),byKey=S._placementByKey||(S._placementByKey=new Map()),existing=byKey.get(key);
   if(existing){if(!existing.node&&rec.node)existing.node=rec.node;return existing;}
   const item={id:'place-'+(++S._placementId),resolved:false,...rec,key};
+  item.searchKey=placementReviewSearchKey(item);
   if(item.node){item.node.placementId=item.id;item.node.placementStatus=item.status;}
   S.placements.push(item);byKey.set(key,item);return item;
 }
@@ -2902,7 +2918,7 @@ async function buildHierarchy(){
     };
 
     report(.02,'Reading source data');await raf();
-    S.cableStruckTags=new Set();S.placements=[];S._placementByKey=new Map();S._placementId=0;S._melPlacementSeeds=new Map();S.lastPlacementMove=null;
+    S.cableStruckTags=new Set();S.placements=[];S._placementByKey=new Map();S._placementId=0;S._melPlacementSeeds=new Map();S.placementScrollTop=0;S.lastPlacementMove=null;
     const loadTags=await collectLoadDescriptionTags(keys,tick);
     await buildMel(tick);
     await buildDeps(tick);
@@ -3380,6 +3396,44 @@ function mountVirtualRows(tbodySel,rows,makeRow,emptyHtml,opts){
   render(false);
   requestAnimationFrame(()=>{if(token===_virtualTok)render(false);});
 }
+const PLACEMENT_ROW_HEIGHT=84;
+const PLACEMENT_ROW_HEIGHT_NARROW=120;
+const PLACEMENT_OVERSCAN=8;
+const PLACEMENT_MAX_DOM_ROWS=80;
+function mountVirtualPlacementRows(list,items,makeRow,ind){
+  if(!list)return;
+  const token=++_virtualTok,track=$('.placement-track',list),windowEl=$('.placement-window',list);
+  let frame=0,rowHeight=window.matchMedia('(max-width:820px)').matches?PLACEMENT_ROW_HEIGHT_NARROW:PLACEMENT_ROW_HEIGHT;
+  const setSize=()=>{
+    rowHeight=window.matchMedia('(max-width:820px)').matches?PLACEMENT_ROW_HEIGHT_NARROW:PLACEMENT_ROW_HEIGHT;
+    const totalHeight=items.length*rowHeight;
+    list.style.setProperty('--placement-row-height',rowHeight+'px');
+    list.style.setProperty('--placement-total-height',totalHeight+'px');
+    track.style.height=totalHeight+'px';
+  };
+  const render=()=>{
+    if(token!==_virtualTok||!list.isConnected)return;
+    const visible=Math.min(PLACEMENT_MAX_DOM_ROWS,Math.max(12,Math.ceil(list.clientHeight/rowHeight)+PLACEMENT_OVERSCAN*2));
+    const start=Math.min(Math.max(0,items.length-visible),Math.max(0,Math.floor(list.scrollTop/rowHeight)-PLACEMENT_OVERSCAN));
+    const end=Math.min(items.length,start+visible);
+    let html='';for(let i=start;i<end;i++)html+=makeRow(items[i]);
+    windowEl.innerHTML=html;windowEl.style.transform=`translateY(${start*rowHeight}px)`;
+    list.dataset.virtualStart=String(start);list.dataset.virtualRows=String(end-start);
+    if(ind)ind.textContent=items.length>end-start?`${(start+1).toLocaleString()}-${end.toLocaleString()} / ${items.length.toLocaleString()}`:`${items.length.toLocaleString()} shown`;
+  };
+  const onScroll=()=>{S.placementScrollTop=list.scrollTop;if(frame)return;frame=requestAnimationFrame(()=>{frame=0;render();});};
+  list.addEventListener('scroll',onScroll,{passive:true});
+  list.addEventListener('click',e=>{const btn=e.target.closest&&e.target.closest('[data-placement]');if(btn&&list.contains(btn))openPlacementDrawer(btn.dataset.placement);});
+  if(_placementResizeObserver)_placementResizeObserver.disconnect();
+  if(window.ResizeObserver){
+    _placementResizeObserver=new ResizeObserver(()=>{if(token!==_virtualTok)return;const old=rowHeight;setSize();if(old!==rowHeight)list.scrollTop=Math.floor(list.scrollTop/old)*rowHeight;render();});
+    _placementResizeObserver.observe(list);
+  }
+  setSize();
+  list.scrollTop=Math.min(S.placementScrollTop||0,Math.max(0,items.length*rowHeight-list.clientHeight));
+  render();
+  requestAnimationFrame(()=>{if(token===_virtualTok)render();});
+}
 
 /* ---- Review panel (cable not in Easy Power) ---- */
 function reviewMakeRow(r){
@@ -3404,7 +3458,7 @@ function reviewRows(){
 }
 function reviewPanelCacheKey(){
   const sort=S.revSort?S.revSort.col+':'+S.revSort.dir:'';
-  return ['review',S.reviewMode,S.review.length,activePlacements().length,S.placementRevision,S.revSearch,S.revMinPct==null?'':S.revMinPct,sort].join(KEYSEP);
+  return ['review',S.reviewMode,S.review.length,activePlacements().length,S.placementRevision,S.revSearch,S.revMinPct==null?'':S.revMinPct,sort,S.reviewMode==='placement'?S.placementQuery:''].join(KEYSEP);
 }
 function reviewRowsCacheKey(){return reviewPanelCacheKey();}
 function getReviewRowsCache(){
@@ -3444,7 +3498,7 @@ function wireReviewPanel(){
     refreshReview();
   });
 }
-function reviewModesHtml(){const placements=activePlacements().length;return `<div class="review-modes" role="tablist" aria-label="Review type">
+function reviewModesHtml(placementCount){const placements=placementCount==null?activePlacements().length:placementCount;return `<div class="review-modes" role="tablist" aria-label="Review type">
   <button class="review-mode ${S.reviewMode==='cross'?'on':''}" data-review-mode="cross" role="tab" aria-selected="${S.reviewMode==='cross'}">${ic('table-2')}Cross-Sheet Tag Review <span class="review-mode-count">${S.review.length}</span></button>
   <button class="review-mode ${S.reviewMode==='placement'?'on':''}" data-review-mode="placement" role="tab" aria-selected="${S.reviewMode==='placement'}">${ic('git-branch')}Placement Review <span class="review-mode-count">${placements}</span></button>
   </div>`;}
@@ -3453,24 +3507,50 @@ function placementState(item,detail){
   if(item.status==='missing-data')return detail?'MEL data missing · relationship unchanged':'Missing MEL data';
   return detail?'Needs a parent':'Needs parent';
 }
-function renderPlacementReviewPanel(el){
-  const q=clean(S.placementQuery).toLowerCase(),all=activePlacements(),items=all.filter(item=>!q||[item.branchName,item.currentParent,item.suggestedParent,item.source,item.reason].join(' ').toLowerCase().includes(q));
-  const list=items.length?`<div class="placement-list">${items.map(item=>{
-    const descendants=item.node?rawSubtreeCount(item.node):0,path=item.path&&item.path.length?item.path:[item.currentParent,item.branchName].filter(Boolean);
-    const pathHtml=path.length?path.map(tag=>copyTagHtml(tag)).join('<span class="tag-sep"> / </span>'):'Not currently placed';
-    return `<button class="placement-item" data-placement="${item.id}"><div><div class="placement-name">${copyTagHtml(item.branchName)}</div><div class="placement-meta">${descendants} descendant${descendants===1?'':'s'} · ${esc(item.source)}</div></div>
-      <div class="placement-reason">${esc(item.reason)}<span class="placement-path">${pathHtml}</span></div>
-      <span class="placement-state">${ic(item.status==='suggested'?'circle-check':'triangle-alert')}${placementState(item,false)}</span></button>`;
-  }).join('')}</div>`:`<div class="note info">${ic('circle-check')}<div>${all.length?'No placement items match this filter.':'No branches are waiting for placement review.'}</div></div>`;
-  el.innerHTML=reviewModesHtml()+`<div class="note warn" style="margin-bottom:12px">${ic('triangle-alert')}<div>Review branches that were auto-placed, could not be anchored safely, or could not complete a MEL parent check. Moving a branch keeps its full subtree together.</div></div>
-    <div class="toolbar"><div class="search">${ic('search')}<input id="placementFilter" type="text" placeholder="Filter branches…" value="${esc(S.placementQuery)}" autocomplete="off"><button class="qx icon-btn ${S.placementQuery?'show':''}" id="placementFilterX" type="button" aria-label="Clear placement filter">${ic('x')}</button></div>
-    ${S.lastPlacementMove?`<button class="btn sm spacer" id="placementUndo">${ic('rotate-ccw')}Undo last change</button>`:''}</div>${list}`;
-  wireReviewPanel();
-  const input=$('#placementFilter');if(input){let timer;input.oninput=()=>{clearTimeout(timer);timer=setTimeout(()=>{S.placementQuery=input.value;renderReviewPanel();},180);};}
-  const clear=$('#placementFilterX');if(clear)clear.onclick=()=>{S.placementQuery='';renderReviewPanel();};
-  $$('#panel-review [data-placement]').forEach(btn=>btn.onclick=()=>openPlacementDrawer(btn.dataset.placement));
-  const undo=$('#placementUndo');if(undo)undo.onclick=undoPlacement;
+function placementRowsCacheKey(){return ['placement',S.placements.length,S.placementRevision,clean(S.placementQuery).toLowerCase()].join(KEYSEP);}
+function getPlacementRowsCache(){
+  const key=placementRowsCacheKey(),hit=cacheGet(S.viewCache.placementRows,key);if(hit)return hit;
+  const q=clean(S.placementQuery).toLowerCase(),items=[];let total=0;
+  for(const item of S.placements){
+    if(item.resolved)continue;total++;
+    if(!item.searchKey)item.searchKey=placementReviewSearchKey(item);
+    if(!q||item.searchKey.includes(q))items.push(item);
+  }
+  const rec={key,items,total};cacheSet(S.viewCache.placementRows,key,rec);return rec;
+}
+function placementItemHtml(item){
+  if(item._reviewHtmlRevision===S.placementRevision&&item._reviewHtml)return item._reviewHtml;
+  const descendants=item.node?rawSubtreeCount(item.node):0,path=item.path&&item.path.length?item.path:[item.currentParent,item.branchName].filter(Boolean);
+  const pathHtml=path.length?path.map(tag=>copyTagHtml(tag)).join('<span class="tag-sep"> / </span>'):'Not currently placed';
+  item._reviewHtml=`<button class="placement-item" data-placement="${item.id}"><div><div class="placement-name">${copyTagHtml(item.branchName)}</div><div class="placement-meta">${descendants} descendant${descendants===1?'':'s'} · ${esc(item.source)}</div></div>
+    <div class="placement-reason"><span class="placement-reason-text">${esc(item.reason)}</span><span class="placement-path">${pathHtml}</span></div>
+    <span class="placement-state">${ic(item.status==='suggested'?'circle-check':'triangle-alert')}${placementState(item,false)}</span></button>`;
+  item._reviewHtmlRevision=S.placementRevision;return item._reviewHtml;
+}
+function refreshPlacementReview(rec){
+  const el=$('#panel-review'),host=$('#placementResults');if(!el||!host)return;
+  rec=rec||getPlacementRowsCache();
+  const count=$('#placementCnt');if(count)count.textContent=`${rec.total.toLocaleString()} to review${rec.items.length!==rec.total?` · ${rec.items.length.toLocaleString()} shown`:''}`;
+  const ind=$('#placementInd');
+  if(!rec.items.length){
+    host.innerHTML=`<div class="note info">${ic('circle-check')}<div>${rec.total?'No placement items match this filter.':'No branches are waiting for placement review.'}</div></div>`;
+    if(ind)ind.textContent='';markPanelCacheReady(el,reviewPanelCacheKey());return;
+  }
+  host.innerHTML='<div class="placement-list" id="placementList" aria-label="Branches awaiting placement review"><div class="placement-track"><div class="placement-window"></div></div></div>';
+  mountVirtualPlacementRows($('#placementList'),rec.items,placementItemHtml,ind);
   markPanelCacheReady(el,reviewPanelCacheKey());
+}
+function renderPlacementReviewPanel(el){
+  const rec=getPlacementRowsCache();
+  el.innerHTML=reviewModesHtml(rec.total)+`<div class="note warn" style="margin-bottom:12px">${ic('triangle-alert')}<div>Review branches that were auto-placed, could not be anchored safely, or could not complete a MEL parent check. Moving a branch keeps its full subtree together.</div></div>
+    <div class="toolbar"><div class="search">${ic('search')}<input id="placementFilter" type="text" placeholder="Filter branches…" value="${esc(S.placementQuery)}" autocomplete="off"><button class="qx icon-btn ${S.placementQuery?'show':''}" id="placementFilterX" type="button" aria-label="Clear placement filter">${ic('x')}</button></div>
+    <span class="placement-range" id="placementInd"></span><span class="hint" id="placementCnt"></span>
+    ${S.lastPlacementMove?`<button class="btn sm spacer" id="placementUndo">${ic('rotate-ccw')}Undo last change</button>`:''}</div><div id="placementResults"></div>`;
+  wireReviewPanel();
+  refreshPlacementReview(rec);
+  const input=$('#placementFilter');if(input){let timer;input.oninput=()=>{clearTimeout(timer);timer=setTimeout(()=>{S.placementQuery=input.value;S.placementScrollTop=0;$('#placementFilterX').classList.toggle('show',!!input.value);refreshPlacementReview();},160);};}
+  const clear=$('#placementFilterX');if(clear)clear.onclick=()=>{S.placementQuery='';S.placementScrollTop=0;input.value='';clear.classList.remove('show');refreshPlacementReview();input.focus();};
+  const undo=$('#placementUndo');if(undo)undo.onclick=undoPlacement;
 }
 function renderReviewPanel(){
   const el=$('#panel-review');if(!el)return;
