@@ -654,13 +654,21 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.23';
+const APP_VERSION = '1.1.24';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.24',
+    date:'2026-07-23T13:55:40Z',
+    type:'fix',
+    stats:{fixes:1},
+    notes:`- Fixed MEL System Parent checks skipping extracted Equipment IDs shown in Comparison
+- Added MEL parent-check outcomes to equipment details`
+  },
   {
     version:'1.1.23',
     date:'2026-07-23T13:31:46Z',
@@ -1179,8 +1187,8 @@ const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:n
   showSpares:true,showSpaces:true,showDeps:true,showPmdMatches:true,deps:new Map(),depDetail:new Map(),hasCable:false,
   cableStruckTags:new Set(),
   pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdSuffixMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
-  melRows:[],melByTag:new Map(),melByNorm:new Map(),melXfmBySuffix:new Map(),
-  epDetail:new Map(),epNameSet:new Set(),epSourceTags:new Set(),review:[],placements:[],reviewMode:'cross',placementRevision:0,placementQuery:'',lastPlacementMove:null,
+  melRows:[],melByTag:new Map(),melByNorm:new Map(),melXfmBySuffix:new Map(),melParentChecks:new Map(),
+  epDetail:new Map(),epNameSet:new Set(),review:[],placements:[],reviewMode:'cross',placementRevision:0,placementQuery:'',lastPlacementMove:null,
   workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
   cmpFilter:'all',cmpSearch:'',cmpDiff:'all',cmpSort:null,revSearch:'',revSort:null,revMinPct:null,showStats:true,
   resultFullscreen:false,
@@ -2295,18 +2303,26 @@ function repairCableSsmRows(rows,plan){
   return out;
 }
 function melUpnKey(value){return clean(value).replace(/\s+/g,'').toLowerCase();}
+function recordMelSystemParentCheck(plan,check){
+  const key=tagKey(check.equip),rank={corrected:4,warning:3,matched:2,'not-found':1},existing=plan.checks.get(key);
+  if(!key||existing&&(rank[existing.status]||0)>(rank[check.status]||0))return;
+  plan.checks.set(key,check);
+}
 function addMelSystemParentWarning(plan,warning){
   const key=[tagKey(warning.equip),tagKey(warning.currentParent),warning.missingField,warning.reason].join(KEYSEP);
   if(plan._warningKeys.has(key))return;
-  plan._warningKeys.add(key);plan.warnings.push(warning);
+  plan._warningKeys.add(key);plan.warnings.push(warning);recordMelSystemParentCheck(plan,{...warning,status:'warning'});
 }
 function buildMelSystemParentPlan(rows){
-  const corrections=new Map(),warnings=[],plan={corrections,warnings,_warningKeys:new Set()};
+  const corrections=new Map(),warnings=[],plan={corrections,warnings,checks:new Map(),_warningKeys:new Set()};
   const byEquipment=new Map();for(const row of rows){const key=tagKey(row&&row[0]);if(key&&!byEquipment.has(key))byEquipment.set(key,row);}
   for(const row of rows){
     const equip=cleanTag(row&&row[0]),key=tagKey(equip),currentParent=cleanTag(row&&row[1]);
-    if(!equip||!currentParent||isSystemName(currentParent)||!S.epSourceTags.has(key)||corrections.has(key))continue;
-    const equipmentMel=melRecord(equip);if(!equipmentMel)continue;
+    if(!equip||!currentParent||isSystemName(currentParent)||corrections.has(key))continue;
+    const equipmentMel=melRecord(equip);
+    if(!equipmentMel){
+      recordMelSystemParentCheck(plan,{equip,currentParent,status:'not-found',reason:`${equip} was not found in the MEL Equipment Tag column`});continue;
+    }
     const equipmentUpn=clean(equipmentMel.upn);
     if(!equipmentUpn){
       addMelSystemParentWarning(plan,{equip,currentParent,missingField:'Equipment UPN',reason:`MEL parent check skipped because ${equip} has no UPN`});continue;
@@ -2318,7 +2334,9 @@ function buildMelSystemParentPlan(rows){
     if(!parentUpn){
       addMelSystemParentWarning(plan,{equip,currentParent,missingField:'Closest Parent UPN',reason:`MEL parent check skipped because ${currentParent} has no UPN`});continue;
     }
-    if(melUpnKey(equipmentUpn)===melUpnKey(parentUpn))continue;
+    if(melUpnKey(equipmentUpn)===melUpnKey(parentUpn)){
+      recordMelSystemParentCheck(plan,{equip,currentParent,status:'matched',equipmentUpn,parentUpn,reason:'Equipment and Closest Parent UPNs match'});continue;
+    }
     const newParent=firstSystemParentTag(equipmentMel.systemParent);
     if(!newParent){
       addMelSystemParentWarning(plan,{equip,currentParent,missingField:'System Parent Equipment Tag(s)',reason:`UPNs differ, but ${equip} has no System Parent Equipment Tag`});continue;
@@ -2370,6 +2388,8 @@ function repairMelSystemParentHierarchy(root,plan){
       addMelSystemParentWarning(plan,{equip:correction.equip,currentParent:correction.currentParent,missingField:'Valid System Parent placement',
         reason:`UPNs differ, but ${correction.equip} could not be moved under ${correction.newParent} safely`});
       plan.corrections.delete(correctionKey);
+    }else{
+      recordMelSystemParentCheck(plan,{...correction,status:'corrected',reason:`Closest Parent changed from ${correction.currentParent} to ${correction.newParent}; the previous parent is now the Dependency`});
     }
   }
   return moved;
@@ -2530,7 +2550,7 @@ async function buildHierarchy(){
     await buildMel(tick);
     await buildDeps(tick);
     await buildPmd(tick);
-    S.epDetail=new Map();S.epSourceTags=new Set();
+    S.epDetail=new Map();S.melParentChecks=new Map();
     const combined={name:'__root__',kids:new Map()};let rowsRead=0,loadCount=0;
     const seenC=new Set(),ssmCombined=[],sheets=[];
     const noteEP=(name,circuit)=>{const k=clean(name).toLowerCase();if(!k)return;const e=S.epDetail.get(k)||{};if(circuit&&e.circuit==null)e.circuit=circuit;S.epDetail.set(k,e);};
@@ -2543,9 +2563,7 @@ async function buildHierarchy(){
       const seenS=new Set(),ssmRows=[];
       for(let i=headerRow+1;i<aoa.length;i++){
         await tick(label);
-        const parsed=rowToPath(aoa[i],cols,rec,i,loadTags);
-        for(const value of [...parsed.segs,parsed.loadDesc]){const key=tagKey(value);if(key&&!isNote(value))S.epSourceTags.add(key);}
-        let {segs,hasId,idName,loadDesc,finalSource}=parsed;
+        let {segs,hasId,idName,loadDesc,finalSource}=rowToPath(aoa[i],cols,rec,i,loadTags);
         segs=applyMelParentCorrections(gisBusCut(segs),loadDesc,true); // also correct MEL-backed LV transformer parents
         if(!segs.length)continue;
         rowsRead++;
@@ -2586,6 +2604,7 @@ async function buildHierarchy(){
     let finalCombinedRows=repairCableSsmRows(preparedCombined,combinedCablePlan);
     const combinedMelSystemPlan=buildMelSystemParentPlan(finalCombinedRows);
     repairMelSystemParentHierarchy(combined,combinedMelSystemPlan);
+    S.melParentChecks=combinedMelSystemPlan.checks;
     finalCombinedRows=repairMelSystemParentSsmRows(finalCombinedRows,combinedMelSystemPlan);
     for(const sh of sheets){
       const prepared=repairEasyPowerSsmRows(repairMelSsmRows(sh.ssmRows)),plan=buildCableParentPlan(prepared);
@@ -3243,7 +3262,7 @@ function rowInner(node,prefixArr,isLast,isRoot,hl){
   const pmdBadge=node.pmdPanel?`<span class="dep pmd-link" title="Matched PMD panel">${ic('database')}${esc(node.pmdPanel)}</span>`:'';
   const descTitle=node.isInstrument&&node.description?` title="${esc(node.description)}"`:'';
   const nk=clean(node.name).toLowerCase();
-  const infoBtn=(S.depDetail.has(nk)||S.epDetail.has(nk)||S.cableStruckTags.has(tagKey(node.name))||melRecord(node.name)||node.pmdKey||node.pmdPanel)?`<button class="rowinfo" data-detail="${node.id}" title="Details" aria-label="Details for ${esc(node.name)}">${ic('info')}</button>`:'';
+  const infoBtn=(S.depDetail.has(nk)||S.epDetail.has(nk)||S.cableStruckTags.has(tagKey(node.name))||melRecord(node.name)||S.melParentChecks.has(tagKey(node.name))||node.pmdKey||node.pmdPanel)?`<button class="rowinfo" data-detail="${node.id}" title="Details" aria-label="Details for ${esc(node.name)}">${ic('info')}</button>`:'';
   const placementBtn=node.placementId?`<button class="placement-flag" data-placement="${node.placementId}" title="Review this branch placement" aria-label="Review placement for ${esc(node.name)}">${ic('triangle-alert')}</button>`:'';
   if(isRoot){
     return `<div class="row root ${hasKids?'':'leafrow'}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
@@ -3676,13 +3695,20 @@ function openDetail(nodeId){
   const nk=clean(node.name).toLowerCase();
   const d=S.depDetail.get(nk),ep=S.epDetail.get(nk);
   const pmd=node.pmdKey?S.pmdDetail.get(node.pmdKey):null,mel=melRecord(node.name);
+  const melCheck=S.melParentChecks.get(tagKey(node.name));
   const placement=node.placementId?S.placements.find(item=>item.id===node.placementId&&!item.resolved):null;
   $('#drawerTitle').innerHTML=`${ic(node.isInstrument?'database':node.isLoad?'corner-down-right':'spline')}<span>${esc(node.name)}</span>`;
   const fld=(label,val,extra)=>`<div class="dfield"><div class="dlabel">${esc(label)}</div><div class="dval ${val?'':'empty'}">${esc(val||'—')}${extra||''}</div></div>`;
   let html='';
   if(S.melRows.length)html+=fld('UPN',mel?mel.upn:'');
   if(mel&&mel.systemParent)html+=fld('System Parent Equipment Tag',firstSystemParentTag(mel.systemParent));
-  if(placement&&placement.status==='missing-data')html+=fld('MEL parent check',placement.reason);
+  if(melCheck){
+    const result=melCheck.status==='corrected'?`Corrected · Equipment UPN ${melCheck.equipmentUpn} / previous parent UPN ${melCheck.parentUpn}`
+      :melCheck.status==='matched'?`No change · matching UPN ${melCheck.equipmentUpn}`
+      :melCheck.status==='warning'?`Skipped · ${melCheck.reason}`:`Not evaluated · ${melCheck.reason}`;
+    html+=fld('MEL parent check',result);
+    if(melCheck.status==='corrected'){html+=fld('Previous Closest Parent',melCheck.currentParent);html+=fld('MEL Closest Parent used',melCheck.newParent);}
+  }else if(placement&&placement.status==='missing-data')html+=fld('MEL parent check',placement.reason);
   if(S.cableStruckTags.has(tagKey(node.name)))html+=fld('Cable Schedule status','Struck through in source');
   if(node.pmdBuilding)html+=fld('Building',node.pmdBuilding);
   if(node.pmdPanel)html+=fld('PMD Panel Match',node.pmdPanel);

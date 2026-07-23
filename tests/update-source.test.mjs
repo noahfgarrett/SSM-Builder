@@ -180,8 +180,7 @@ test('Load Description relations use ID Name, Final Source, and self-match rules
   assert.match(html, /function nodeDep\(n\)\{return n\.dependencyOverride\|\|\(n\.isLoad\?n\.loadDependency:depOf\(n\.name\)\);\}/)
   assert.match(html, /function addLoadChild\(deepNode,loadName,dependency\)/)
   assert.match(html, /loadDependency:m\.loadDependency\|\|''/)
-  assert.match(html, /const parsed=rowToPath/)
-  assert.match(html, /let \{segs,hasId,idName,loadDesc,finalSource\}=parsed/)
+  assert.match(html, /let \{segs,hasId,idName,loadDesc,finalSource\}=rowToPath/)
   assert.match(html, /const rel=melCorrectLoadRelation\(loadDesc,loadSsmRelation\(idName,finalSource,loadDesc\)\),meta=rel\.keepDuplicateDep\?\{keepDuplicateDep:true\}:null/)
   assert.match(html, /addLoadChild\(lcDeep,loadDesc,rel\.dep\);addLoadChild\(lsDeep,loadDesc,rel\.dep\)/)
   const value = runInNewContext(`${customScript}
@@ -309,17 +308,19 @@ test('Equipment_List tabs auto-select and index MEL Equipment Tag and UPN values
   ])
 })
 
-test('MEL UPN mismatches replace closest parents and preserve old parents as dependencies', () => {
+test('MEL UPN checks evaluate every extracted Comparison Equipment ID', () => {
   assert.match(html, /function firstSystemParentTag\(value\)/)
   assert.match(html, /function buildMelSystemParentPlan\(rows\)/)
   assert.match(html, /function repairMelSystemParentHierarchy\(root,plan\)/)
   assert.match(html, /function repairMelSystemParentSsmRows\(rows,plan\)/)
+  assert.match(html, /function recordMelSystemParentCheck\(plan,check\)/)
+  assert.doesNotMatch(html, /epSourceTags/)
   assert.match(html, /status:'missing-data'/)
   assert.match(html, /Missing MEL data/)
   const value = runInNewContext(`${customScript}
-    S.epSourceTags=new Set(['equipment-a','matched-equipment','missing-upn','missing-system-parent']);
     S.melByNorm=new Map();
     S.melByTag=new Map([
+      ['gis-1',{tag:'GIS-1',upn:'372',systemParent:''}],
       ['old-parent',{tag:'OLD-PARENT',upn:'372',systemParent:''}],
       ['new-parent',{tag:'NEW-PARENT',upn:'373',systemParent:''}],
       ['equipment-a',{tag:'EQUIPMENT-A',upn:'373',systemParent:'NEW-PARENT; ALTERNATE-PARENT'}],
@@ -370,7 +371,8 @@ test('MEL UPN mismatches replace closest parents and preserve old parents as dep
       descendants:[...newParent.kids.get('EQUIPMENT-A').kids.keys()],
       hierarchyDependency:nodeDep(builtEquipment),
       repaired,
-      placements:S.placements.map(item=>({branch:item.branchName,status:item.status}))
+      placements:S.placements.map(item=>({branch:item.branchName,status:item.status})),
+      checks:Object.fromEntries([...plan.checks].map(([key,item])=>[key,item.status]))
     });
   `, { console, setTimeout, clearTimeout })
   assert.deepEqual(JSON.parse(value), {
@@ -408,6 +410,14 @@ test('MEL UPN mismatches replace closest parents and preserve old parents as dep
       { branch: 'MISSING-UPN', status: 'missing-data' },
       { branch: 'MISSING-SYSTEM-PARENT', status: 'missing-data' },
     ],
+    checks: {
+      'old-parent': 'matched',
+      'child-a': 'not-found',
+      'matched-equipment': 'matched',
+      'missing-upn': 'warning',
+      'missing-system-parent': 'warning',
+      'equipment-a': 'corrected',
+    },
   })
 })
 
@@ -585,7 +595,10 @@ test('Review separates cross-sheet tags from hierarchy placement work', () => {
 
 test('MEL UPN values appear in hierarchy details and requested SSM columns', () => {
   assert.match(html, /melRecord\(node\.name\).*rowinfo/)
+  assert.match(html, /S\.melParentChecks\.has\(tagKey\(node\.name\)\).*rowinfo/)
   assert.match(html, /const pmd=node\.pmdKey\?S\.pmdDetail\.get\(node\.pmdKey\):null,mel=melRecord\(node\.name\)/)
+  assert.match(html, /const melCheck=S\.melParentChecks\.get\(tagKey\(node\.name\)\)/)
+  assert.match(html, /fld\('MEL parent check',result\)/)
   assert.match(html, /if\(S\.melRows\.length\)html\+=fld\('UPN',mel\?mel\.upn:''\)/)
   assert.match(html, /const G=6,K=10,P=15,AM=38,W=39/)
   assert.match(html, /head\[G\]='UPN';head\[K\]='Equipment ID'/)
