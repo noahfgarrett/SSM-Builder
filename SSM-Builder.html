@@ -673,7 +673,7 @@ const NAT_COLLATOR=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'}
 const natCmp=(a,b)=>NAT_COLLATOR.compare(String(a),String(b));
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.33';
+const APP_VERSION = '1.1.34';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
@@ -681,6 +681,13 @@ let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 let updateModalDismissed=false;
 const CHANGELOG=[
+  {
+    version:'1.1.34',
+    date:'2026-07-23T20:03:36Z',
+    type:'fix',
+    stats:{fixes:1},
+    notes:`- Fixed Cable Schedule parent chains being missed when related rows appear earlier in the sheet`
+  },
   {
     version:'1.1.33',
     date:'2026-07-23T18:41:09Z',
@@ -2546,19 +2553,22 @@ function buildCableParentPlan(rows){
   if(!S.hasCable&&!S.deps.size)return {relations:new Map(),seeds:new Set(),generated:new Set(),unresolved:[]};
   const existing=new Map();
   for(const row of rows){const key=tagKey(row&&row[0]);if(key&&!existing.has(key))existing.set(key,row);}
-  const relations=new Map(),seeds=new Set(),generated=new Set(),unresolved=[];
+  const candidates=[],resolved=[],relations=new Map(),seeds=new Set(),generated=new Set(),unresolved=[];
   for(const row of rows){
     const equip=cleanTag(row&&row[0]),parent=cleanTag(row&&row[1]);
     const dependency=row&&row[2]!=null?cleanTag(row[2]):depOf(equip);
     const cableParent=depOf(equip),seedKey=tagKey(equip);
     if(!equip||!parent||!dependency||tagKey(parent)!==tagKey(dependency)||!cableParent||tagKey(cableParent)===tagKey(parent))continue;
+    candidates.push({equip,parent,cableParent,seedKey});
+  }
+  for(const {equip,parent,cableParent,seedKey} of candidates){
     const local=[{equip,parent:cableParent,generated:false}],seen=new Set([seedKey]);
     let cursor=cableParent,cyclic=false,anchored=false;
     while(cursor){
       const cursorKey=tagKey(cursor);
       if(seen.has(cursorKey)){cyclic=true;break;}
       seen.add(cursorKey);
-      if(cursorKey===tagKey(parent)||existing.has(cursorKey)||relations.has(cursorKey)){anchored=true;break;}
+      if(cursorKey===tagKey(parent)||existing.has(cursorKey)){anchored=true;break;}
       const upstream=depOf(cursor);
       local.push({equip:cursor,parent:upstream,generated:true});
       if(!upstream)break;
@@ -2566,8 +2576,11 @@ function buildCableParentPlan(rows){
     }
     if(cyclic||!anchored){unresolved.push({branchName:equip,currentParent:parent,suggestedParent:cableParent,status:'unplaced',source:'Cable Schedule',
       reason:cyclic?'Cable Schedule parent chain contains a cycle':'Cable Schedule parent chain does not connect to the existing hierarchy',chain:local.map(item=>item.equip)});continue;}
-    seeds.add(seedKey);
-    for(const relation of local){
+    resolved.push({seedKey,local});
+  }
+  for(const candidate of resolved){
+    seeds.add(candidate.seedKey);
+    for(const relation of candidate.local){
       const key=tagKey(relation.equip);if(relations.has(key))continue;
       relations.set(key,{equip:relation.equip,parent:relation.parent});
       if(relation.generated)generated.add(key);

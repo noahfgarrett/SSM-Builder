@@ -258,6 +258,9 @@ test('Load Description relations use ID Name, Final Source, and self-match rules
 
 test('Cable Schedule chains replace duplicate parents and add missing hierarchy panels', () => {
   assert.match(html, /function buildCableParentPlan\(rows\)/)
+  assert.match(html, /const candidates=\[\],resolved=\[\],relations=new Map\(\)/)
+  assert.match(html, /for\(const \{equip,parent,cableParent,seedKey\} of candidates\)/)
+  assert.doesNotMatch(html, /existing\.has\(cursorKey\)\|\|relations\.has\(cursorKey\)/)
   assert.match(html, /tagKey\(parent\)!==tagKey\(dependency\)/)
   assert.match(html, /function repairCableHierarchyParents\(root,plan\)/)
   assert.match(html, /function repairCableSsmRows\(rows,plan\)/)
@@ -266,9 +269,9 @@ test('Cable Schedule chains replace duplicate parents and add missing hierarchy 
   assert.match(html, /repairCableHierarchyParents\(sh\._sMap,plan\)/)
   const value = runInNewContext(`${customScript}
     S.deps=new Map([
-      ['load-a','CABLE-PANEL-1'],
       ['cable-panel-1','CABLE-PANEL-2'],
       ['cable-panel-2','EP-PARENT'],
+      ['load-a','CABLE-PANEL-1'],
       ['load-b','SAME-PANEL'],
       ['load-cycle','CYCLE-PANEL'],
       ['cycle-panel','LOAD-CYCLE']
@@ -280,7 +283,10 @@ test('Cable Schedule chains replace duplicate parents and add missing hierarchy 
       ['LOAD-B','SAME-PANEL','SAME-PANEL',{keepDuplicateDep:true}],
       ['LOAD-CYCLE','OLD-CYCLE','OLD-CYCLE',{keepDuplicateDep:true}]
     ];
-    const plan=buildCableParentPlan(rows),repaired=repairCableSsmRows(rows,plan);
+    const plan=buildCableParentPlan(rows),relationsBefore=[...plan.relations.values()];
+    S.deps=new Map([...S.deps.entries()].reverse());
+    const reversedPlan=buildCableParentPlan(rows),orderIndependent=JSON.stringify(relationsBefore)===JSON.stringify([...reversedPlan.relations.values()]);
+    const repaired=repairCableSsmRows(rows,plan);
     const child={name:'INSTRUMENT-A',kids:new Map(),isId:false};
     const load={name:'LOAD-A',kids:new Map([[child.name,child]]),isId:false,isLoad:true,loadDependency:'EP-PARENT'};
     const ep={name:'EP-PARENT',kids:new Map([[load.name,load]]),isId:true};
@@ -297,6 +303,7 @@ test('Cable Schedule chains replace duplicate parents and add missing hierarchy 
       panel1Kids:panel1?[...panel1.kids.keys()]:[],
       movedDependency:moved&&moved.loadDependency,
       movedKids:moved?[...moved.kids.keys()]:[],
+      orderIndependent,
       repaired:repaired.map(row=>ssmResolve(row))
     });
   `, { console, setTimeout, clearTimeout })
@@ -313,6 +320,7 @@ test('Cable Schedule chains replace duplicate parents and add missing hierarchy 
     panel1Kids: ['LOAD-A'],
     movedDependency: 'CABLE-PANEL-1',
     movedKids: ['INSTRUMENT-A'],
+    orderIndependent: true,
     repaired: [
       { equip: 'ROOT', parent: '', dep: '', keepDuplicateDep: false },
       { equip: 'EP-PARENT', parent: 'ROOT', dep: '', keepDuplicateDep: false },
@@ -716,7 +724,7 @@ test('MEL inserts missing transformer levels and moves complete mismatched LVS b
 })
 
 test('unanchored Cable Schedule chains are reviewed without becoming hierarchy roots', () => {
-  assert.match(html, /const relations=new Map\(\),seeds=new Set\(\),generated=new Set\(\),unresolved=\[\]/)
+  assert.match(html, /relations=new Map\(\),seeds=new Set\(\),generated=new Set\(\),unresolved=\[\]/)
   assert.match(html, /if\(cyclic\|\|!anchored\)\{unresolved\.push/)
   assert.match(html, /if\(!anchor\)continue;/)
   assert.doesNotMatch(html, /else\{target=ensureRawHierarchyChild\(root,chain\[chain\.length-1\]\)/)
