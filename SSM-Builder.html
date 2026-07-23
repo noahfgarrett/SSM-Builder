@@ -658,10 +658,11 @@ function cleanRegisterTag(value){
   return cim?cleanTag(cim[1])+' - CIM':cleanTag(raw);
 }
 function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]||''}</svg>`;}
-const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
+const NAT_COLLATOR=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
+const natCmp=(a,b)=>NAT_COLLATOR.compare(String(a),String(b));
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.30';
+const APP_VERSION = '1.1.31';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
@@ -669,6 +670,16 @@ let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 let updateModalDismissed=false;
 const CHANGELOG=[
+  {
+    version:'1.1.31',
+    date:'2026-07-23T17:59:28Z',
+    type:'fix',
+    stats:{fixes:1,improvements:3},
+    notes:`- Fixed hierarchy builds stalling when optional PMD, MEL, or Cable Schedule files were not included
+- Improved large hierarchy reconciliation, sorting, and placement preparation
+- Reduced PMD memory use by loading per-tab instruments only for separate exports
+- Improved Review and Comparison scrolling stability`
+  },
   {
     version:'1.1.30',
     date:'2026-07-23T17:26:55Z',
@@ -1243,8 +1254,8 @@ const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:n
   showSpares:true,showSpaces:true,showDeps:true,showPmdMatches:true,deps:new Map(),depDetail:new Map(),hasCable:false,
   cableStruckTags:new Set(),
   pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdSuffixMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
-  melRows:[],melByTag:new Map(),melByNorm:new Map(),melBySuffix:new Map(),melByGram:new Map(),melLookupCache:new Map(),melXfmBySuffix:new Map(),melParentChecks:new Map(),
-  epDetail:new Map(),epNameSet:new Set(),review:[],placements:[],reviewMode:'cross',placementRevision:0,placementQuery:'',lastPlacementMove:null,
+  melRows:[],melByTag:new Map(),melByNorm:new Map(),melBySuffix:new Map(),melByGram:new Map(),melLookupCache:new Map(),melContainingCache:new Map(),melXfmBySuffix:new Map(),melParentChecks:new Map(),
+  epDetail:new Map(),epNameSet:new Set(),review:[],placements:[],_placementByKey:new Map(),_rawSubtreeCounts:new WeakMap(),reviewMode:'cross',placementRevision:0,placementQuery:'',lastPlacementMove:null,
   workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
   cmpFilter:'all',cmpSearch:'',cmpDiff:'all',cmpSort:null,revSearch:'',revSort:null,revMinPct:null,showStats:true,
   resultFullscreen:false,
@@ -1685,7 +1696,7 @@ async function collectLoadDescriptionTags(keys,tick){
   for(const key of keys){
     const rec=getAoa(key),cols=resolveCols(key);
     for(let i=rec.headerRow+1;i<rec.aoa.length;i++){
-      if(tick)await tick('Indexing Load Descriptions');
+      if(tick){const pending=tick('Indexing Load Descriptions');if(pending)await pending;}
       if(cols.loadDesc<0)continue;
       const load=rowTag(rec.aoa[i],cols.loadDesc,rec,i);if(load&&!isNote(load))tags.add(tagKey(load));
     }
@@ -1745,14 +1756,35 @@ function buildRoots(root){
 }
 function finalize(root){ // combined tree: build, then index nodeById for click/drawer
   const roots=buildRoots(root);
-  S.nodeById=new Map();
-  const idx=n=>{S.nodeById.set(n.id,n);n.children.forEach(idx);};
-  roots.forEach(idx);
+  S.nodeById=new Map();S.epNameSet=new Set();
+  const prefMaps=new Map();
+  let nodes=0,leaves=0,maxDepth=0,idCount=0,deps=0;
+  const stack=[...roots];
+  while(stack.length){
+    const node=stack.pop(),name=clean(node.name),nameKey=name.toLowerCase();
+    S.nodeById.set(node.id,node);if(nameKey)S.epNameSet.add(nameKey);
+    nodes++;if(node.depth>maxDepth)maxDepth=node.depth;if(node.isId)idCount++;if(!node.children.length)leaves++;if(nodeDep(node))deps++;
+    if(S.hasCable&&name){const prefix=normSep(name).slice(0,3);let bucket=prefMaps.get(prefix);if(!bucket){bucket=new Map();prefMaps.set(prefix,bucket);}if(!bucket.has(normSep(name)))bucket.set(normSep(name),name);}
+    for(let i=node.children.length-1;i>=0;i--)stack.push(node.children[i]);
+  }
+  S._treeStats={nodes,leaves,maxDepth:maxDepth+1,idCount,sources:roots.length,deps};
+  S._reviewEpPref=new Map([...prefMaps].map(([key,bucket])=>[key,[...bucket.values()]]));
   return roots;
 }
 /* per-sheet tree is only needed for the "separate" Hierarchy export — build it lazily */
-function sheetRoots(sh){if(!sh._roots)sh._roots=buildRoots(sh._sMap);return sh._roots;}
+function sheetRoots(sh){
+  if(!sh._roots){
+    if(!sh._pmdAttached&&S.pmdPanels.length){_attachPmdInstruments(sh._sMap,null);sh._pmdAttached=true;}
+    sh._roots=buildRoots(sh._sMap);
+  }
+  return sh._roots;
+}
+function sheetSsmRows(sh){
+  if(!sh._pmdSsmRows)sh._pmdSsmRows=uniqueSsmRows(appendPmdSsmRows(sh.ssmRows,false));
+  return sh._pmdSsmRows;
+}
 function computeStats(roots){
+  if(roots===S.roots&&S._treeStats)return {...S._treeStats};
   let nodes=0,leaves=0,maxDepth=0,idCount=0;
   const walk=n=>{nodes++;if(n.depth>maxDepth)maxDepth=n.depth;if(n.isId)idCount++;
     if(!n.children.length)leaves++;n.children.forEach(walk);};
@@ -1760,6 +1792,7 @@ function computeStats(roots){
   return {nodes,leaves,maxDepth:maxDepth+1,idCount,sources:roots.length};
 }
 function countTreeDependencies(roots){
+  if(roots===S.roots&&S._treeStats)return S._treeStats.deps||0;
   let count=0;
   const walk=node=>{if(nodeDep(node))count++;node.children.forEach(walk);};
   roots.forEach(walk);return count;
@@ -2032,13 +2065,13 @@ function updateSelInfo(){
 
 /* ---- build ---- */
 async function buildMel(tick){
-  S.melRows=[];S.melByTag=new Map();S.melByNorm=new Map();S.melBySuffix=new Map();S.melByGram=new Map();S.melLookupCache=new Map();S.melXfmBySuffix=new Map();
+  S.melRows=[];S.melByTag=new Map();S.melByNorm=new Map();S.melBySuffix=new Map();S.melByGram=new Map();S.melLookupCache=new Map();S.melContainingCache=new Map();S.melXfmBySuffix=new Map();
   for(const key of S.melSel){
     const [fid]=key.split(KEYSEP);if(!fileById(fid))continue;
     const mi=melInfo(key);if(!mi)continue;
     const {map,headerRow}=mi,{aoa}=getAoa(key);
     for(let i=headerRow+1;i<aoa.length;i++){
-      if(tick)await tick('Reading Master Equipment List');
+      if(tick){const pending=tick('Reading Master Equipment List');if(pending)await pending;}
       const tag=cleanTag(aoa[i][map.tag]);if(!tag)continue;
       const upn=map.upn>=0?clean(aoa[i][map.upn]):'',building=map.building>=0?clean(aoa[i][map.building]):'';
       const systemParent=map.systemParent>=0?clean(aoa[i][map.systemParent]):'',keyTag=tagKey(tag),existing=S.melByTag.get(keyTag);
@@ -2053,6 +2086,7 @@ async function buildMel(tick){
     }
   }
 }
+function hasMelData(){return !!(S.melByTag.size||S.melRows.length);}
 function melRecord(value){return S.melByTag.get(tagKey(value))||S.melByNorm.get(normSep(cleanTag(value)))||null;}
 const MEL_LOOKUP_GRAM_SIZE=3;
 function melLookupGrams(value){
@@ -2122,13 +2156,14 @@ function melMatchingTransformer(equipment,current){
 function stripPowerVariant(value){return cleanTag(value).replace(/[_-](?:NPS|CPS)$/i,'');}
 function melContainingRecord(value){
   const key=normSep(stripPowerVariant(value));if(!key)return null;
+  if(S.melContainingCache.has(key))return S.melContainingCache.get(key);
   let contained=null;
   for(const rec of melLookupSearchRows(key)){
     const recKey=normSep(rec.tag);
-    if(recKey===key||recKey.endsWith(key))return rec;
+    if(recKey===key||recKey.endsWith(key)){S.melContainingCache.set(key,rec);return rec;}
     if(!contained&&recKey.includes(key))contained=rec;
   }
-  return contained;
+  S.melContainingCache.set(key,contained);return contained;
 }
 function melScrSccParent(equipment){
   const tag=stripPowerVariant(equipment),upper=tag.toUpperCase();
@@ -2145,8 +2180,9 @@ function melCimParent(equipment){
   const match=melRecord(tag)||melContainingRecord(tag),building=match&&clean(match.building);
   return building?building+' - CIM':'';
 }
-function melSyntheticParent(equipment){return melScrSccParent(equipment)||melCimParent(equipment);}
+function melSyntheticParent(equipment){return hasMelData()?(melScrSccParent(equipment)||melCimParent(equipment)):'';}
 function melTransformerDecision(equipment,parent){
+  if(!hasMelData())return null;
   const equip=stripPowerVariant(equipment),current=stripPowerVariant(parent);
   if(equip.length<4||current.length<4||!hasEquipmentRole(equip,'LVS')||!hasEquipmentRole(current,'XFM'))return null;
   const suffix=equipmentSuffix(equip);
@@ -2180,6 +2216,7 @@ function melCorrectLoadRelation(loadDesc,relation){
   return {...relation,parent:corrected,dep};
 }
 function rawKidEntry(kids,value){
+  if(kids.has(value))return [value,kids.get(value)];
   const key=tagKey(value);
   for(const entry of kids.entries())if(tagKey(entry[1].name)===key)return entry;
   return null;
@@ -2260,11 +2297,11 @@ function isSystemName(value){return SYSTEM_NAMES.has(tagKey(value));}
 function placementKey(rec){return [rec.source,tagKey(rec.branchName),tagKey(rec.currentParent),tagKey(rec.suggestedParent),rec.status].join(KEYSEP);}
 function activePlacements(){return S.placements.filter(rec=>!rec.resolved);}
 function registerPlacement(rec){
-  const key=placementKey(rec),existing=S.placements.find(item=>item.key===key);
+  const key=placementKey(rec),byKey=S._placementByKey||(S._placementByKey=new Map()),existing=byKey.get(key);
   if(existing){if(!existing.node&&rec.node)existing.node=rec.node;return existing;}
   const item={id:'place-'+(++S._placementId),resolved:false,...rec,key};
   if(item.node){item.node.placementId=item.id;item.node.placementStatus=item.status;}
-  S.placements.push(item);return item;
+  S.placements.push(item);byKey.set(key,item);return item;
 }
 function rawOccurrences(root,value){
   const found=[],wanted=tagKey(value);
@@ -2272,11 +2309,14 @@ function rawOccurrences(root,value){
   walk(root,[]);return found;
 }
 function buildRawHierarchyIndex(root){
-  const index={root,byName:new Map(),location:new Map()};
+  const index={root,byName:new Map(),byParentName:new Map(),location:new Map()};
   const walk=holder=>{
     for(const [key,node] of holder.kids){
       const nameKey=tagKey(node.name),matches=index.byName.get(nameKey)||[];
-      matches.push(node);index.byName.set(nameKey,matches);index.location.set(node,{holder,key});walk(node);
+      matches.push(node);index.byName.set(nameKey,matches);
+      const parentKey=nameKey+KEYSEP+tagKey(holder.name),parentMatches=index.byParentName.get(parentKey)||[];
+      parentMatches.push(node);index.byParentName.set(parentKey,parentMatches);
+      index.location.set(node,{holder,key});walk(node);
     }
   };
   walk(root);return index;
@@ -2312,6 +2352,15 @@ function indexedRawOccurrences(index,value,includePath){
   }
   return found;
 }
+function indexedRawOccurrence(index,value,parent,includePath){
+  const nameKey=tagKey(value),parentKey=nameKey+KEYSEP+tagKey(parent);
+  const preferred=index.byParentName.get(parentKey)||[],fallback=index.byName.get(nameKey)||[];
+  for(const node of preferred.length?preferred:fallback){
+    const location=index.location.get(node);if(!location)continue;
+    return {holder:location.holder,key:location.key,node,path:includePath?indexedRawPath(index,node):[]};
+  }
+  return null;
+}
 function indexedRawNode(index,value,blocked){
   for(const node of index.byName.get(tagKey(value))||[]){
     if(!index.location.has(node))continue;
@@ -2323,6 +2372,8 @@ function indexedRawNode(index,value,blocked){
 function indexRawHierarchyNode(index,holder,key,node){
   const nameKey=tagKey(node.name),matches=index.byName.get(nameKey)||[];
   if(!matches.includes(node)){matches.push(node);index.byName.set(nameKey,matches);}
+  const parentKey=nameKey+KEYSEP+tagKey(holder.name),parentMatches=index.byParentName.get(parentKey)||[];
+  if(!parentMatches.includes(node)){parentMatches.push(node);index.byParentName.set(parentKey,parentMatches);}
   index.location.set(node,{holder,key});
 }
 function mergeRawHierarchyNodeIndexed(index,target,source){
@@ -2335,12 +2386,12 @@ function mergeRawHierarchyNodeIndexed(index,target,source){
   }
   index.location.delete(source);return target;
 }
-function bindMelPlacementSeeds(root){
-  const index=buildRawHierarchyIndex(root);
+function bindMelPlacementSeeds(root,index){
+  if(!S._melPlacementSeeds||!S._melPlacementSeeds.size)return;
+  index=index||buildRawHierarchyIndex(root);
   for(const seed of S._melPlacementSeeds.values()){
     const expectedParent=seed.status==='suggested'?seed.suggestedParent:seed.currentParent;
-    const occurrences=indexedRawOccurrences(index,seed.branchName,true);
-    const occurrence=occurrences.find(hit=>tagKey(hit.holder.name)===tagKey(expectedParent))||occurrences[0];
+    const occurrence=indexedRawOccurrence(index,seed.branchName,expectedParent,true);
     registerPlacement({...seed,node:occurrence&&occurrence.node,path:occurrence?occurrence.path:[],
       currentParent:occurrence?occurrence.holder.name:seed.currentParent});
   }
@@ -2372,7 +2423,7 @@ function repairEasyPowerHierarchyParents(root){
       moved++;walk(movedNode);
     }
   };
-  walk(root);
+  if(hasMelData())walk(root);
   const gisRoots=[...root.kids.entries()].filter(([,node])=>/GIS/i.test(node.name));
   if(gisRoots.length){
     let parentEntry=rawKidEntry(root.kids,GIS_PARENT),target=parentEntry&&parentEntry[1];
@@ -2396,6 +2447,7 @@ function melLvsDescendants(transformer){
   walk(transformer);return found;
 }
 function repairMelTransformerBranches(root){
+  if(!hasMelData())return 0;
   let moved=0;
   const visit=container=>{
     const transformers=[...container.kids.values()].filter(node=>hasEquipmentRole(node.name,'XFM'));
@@ -2462,6 +2514,7 @@ function repairEasyPowerSsmRows(rows){
   return out;
 }
 function buildCableParentPlan(rows){
+  if(!S.hasCable&&!S.deps.size)return {relations:new Map(),seeds:new Set(),generated:new Set(),unresolved:[]};
   const existing=new Map();
   for(const row of rows){const key=tagKey(row&&row[0]);if(key&&!existing.has(key))existing.set(key,row);}
   const relations=new Map(),seeds=new Set(),generated=new Set(),unresolved=[];
@@ -2494,10 +2547,10 @@ function buildCableParentPlan(rows){
   return {relations,seeds,generated,unresolved};
 }
 function registerCablePlacementIssues(root,plan){
+  if(!plan||!plan.unresolved.length)return;
   const index=buildRawHierarchyIndex(root);
   for(const issue of (plan&&plan.unresolved)||[]){
-    const occurrences=indexedRawOccurrences(index,issue.branchName,true);
-    const occurrence=occurrences.find(hit=>tagKey(hit.holder.name)===tagKey(issue.currentParent))||occurrences[0];
+    const occurrence=indexedRawOccurrence(index,issue.branchName,issue.currentParent,true);
     registerPlacement({...issue,node:occurrence&&occurrence.node,path:occurrence?occurrence.path:[]});
   }
 }
@@ -2524,34 +2577,37 @@ function ensureRawHierarchyChild(holder,name){
 }
 function repairCableHierarchyParents(root,plan){
   if(!plan||!plan.seeds.size)return 0;
-  const occurrences=[];
-  const collect=(holder,ancestors,depth)=>{
-    for(const [key,node] of holder.kids.entries()){
-      if(plan.seeds.has(tagKey(node.name)))occurrences.push({holder,key,node,ancestors:[...ancestors],depth});
-      collect(node,[...ancestors,holder],depth+1);
-    }
-  };
-  collect(root,[],0);occurrences.sort((a,b)=>b.depth-a.depth);
+  const index=buildRawHierarchyIndex(root),occurrences=[];
+  const depthOf=node=>{let depth=0,current=node,seen=new Set();while(current&&current!==root&&!seen.has(current)){seen.add(current);const location=index.location.get(current);if(!location)break;current=location.holder;depth++;}return depth;};
+  for(const seed of plan.seeds)for(const node of index.byName.get(seed)||[])if(index.location.has(node))occurrences.push({node,depth:depthOf(node)});
+  occurrences.sort((a,b)=>b.depth-a.depth);
   let moved=0;
   for(const occurrence of occurrences){
-    const entry=rawKidEntry(occurrence.holder.kids,occurrence.node.name);
-    if(!entry||entry[1]!==occurrence.node)continue;
+    const live=index.location.get(occurrence.node);if(!live)continue;
     const relation=plan.relations.get(tagKey(occurrence.node.name)),chain=cablePlannedParents(plan,occurrence.node.name);
-    if(!relation||!chain.length||tagKey(occurrence.holder.name)===tagKey(relation.parent))continue;
-    const local=[occurrence.holder,...occurrence.ancestors.slice().reverse()];let anchor=null,anchorIndex=-1;
+    if(!relation||!chain.length||tagKey(live.holder.name)===tagKey(relation.parent))continue;
+    const local=[];let cursor=live.holder;
+    while(cursor){local.push(cursor);if(cursor===root)break;const location=index.location.get(cursor);cursor=location&&location.holder;}
+    let anchor=null,anchorIndex=-1;
     for(let i=0;i<chain.length&&!anchor;i++)for(const candidate of local)if(tagKey(candidate.name)===tagKey(chain[i])){anchor=candidate;anchorIndex=i;break;}
     if(!anchor){
       for(let i=0;i<chain.length;i++){
-        const found=findRawHierarchyNode(root,chain[i],occurrence.node);
+        const found=indexedRawNode(index,chain[i],occurrence.node);
         if(found){anchor=found;anchorIndex=i;break;}
       }
     }
     if(!anchor)continue;
-    occurrence.holder.kids.delete(entry[0]);
-    let target=anchor;for(let i=anchorIndex-1;i>=0;i--)target=ensureRawHierarchyChild(target,chain[i]);
+    live.holder.kids.delete(live.key);
+    let target=anchor;
+    for(let i=anchorIndex-1;i>=0;i--){
+      const existing=indexedRawKidEntry(index,target,chain[i]);
+      if(existing)target=existing[1];
+      else{const node={name:chain[i],kids:new Map(),isId:false};target.kids.set(chain[i],node);indexRawHierarchyNode(index,target,chain[i],node);target=node;}
+    }
     if(occurrence.node.isLoad)occurrence.node.loadDependency=relation.parent;
-    const duplicate=rawKidEntry(target.kids,occurrence.node.name);
-    if(duplicate)mergeRawHierarchyNode(duplicate[1],occurrence.node);else target.kids.set(occurrence.node.name,occurrence.node);
+    const duplicate=indexedRawKidEntry(index,target,occurrence.node.name);
+    if(duplicate&&duplicate[1]!==occurrence.node)mergeRawHierarchyNodeIndexed(index,duplicate[1],occurrence.node);
+    else{target.kids.set(occurrence.node.name,occurrence.node);index.location.set(occurrence.node,{holder:target,key:occurrence.node.name});}
     moved++;
   }
   return moved;
@@ -2591,6 +2647,7 @@ function addMelSystemParentWarning(plan,warning){
 }
 function buildMelSystemParentPlan(rows){
   const corrections=new Map(),warnings=[],plan={corrections,warnings,checks:new Map(),_warningKeys:new Set()};
+  if(!hasMelData())return plan;
   const byEquipment=new Map();for(const row of rows){const key=tagKey(row&&row[0]);if(key&&!byEquipment.has(key))byEquipment.set(key,row);}
   for(const row of rows){
     const equip=cleanTag(row&&row[0]),key=tagKey(equip),currentParent=cleanTag(row&&row[1]);
@@ -2699,10 +2756,11 @@ function repairMelSystemParentSsmRows(rows,plan){
   }
   return out;
 }
-function registerMelSystemParentIssues(root,plan){
-  const index=buildRawHierarchyIndex(root);
-  for(const warning of (plan&&plan.warnings)||[]){
-    const occurrences=indexedRawOccurrences(index,warning.equip,true),occurrence=occurrences.find(hit=>tagKey(hit.holder.name)===tagKey(warning.currentParent))||occurrences[0];
+function registerMelSystemParentIssues(root,plan,index){
+  const warnings=(plan&&plan.warnings)||[];if(!warnings.length)return;
+  index=index||buildRawHierarchyIndex(root);
+  for(const warning of warnings){
+    const occurrence=indexedRawOccurrence(index,warning.equip,warning.currentParent,true);
     registerPlacement({node:occurrence&&occurrence.node,branchName:warning.equip,originalParent:warning.currentParent,currentParent:occurrence?occurrence.holder.name:warning.currentParent,
       suggestedParent:'',status:'missing-data',source:'Master Equipment List',reason:warning.reason,missingField:warning.missingField,path:occurrence?occurrence.path:[]});
   }
@@ -2717,7 +2775,7 @@ async function buildDeps(tick){
     const rec=getAoa(key),{aoa}=rec;
     const loadC=map['Load Name (To)'],panelC=map['Panel (From)'],ents=Object.entries(map);
     for(let i=headerRow+1;i<aoa.length;i++){
-      if(tick)await tick('Reading cable schedule');
+      if(tick){const pending=tick('Reading cable schedule');if(pending)await pending;}
       const row=aoa[i],load=rowTag(row,loadC,rec,i);if(!load)continue;
       const lk=load.toLowerCase(),panel=rowTag(row,panelC,rec,i);
       if(cellIsStruck(rec,i,loadC))S.cableStruckTags.add(tagKey(load));
@@ -2738,7 +2796,7 @@ async function buildPmd(tick){
     const pi=pmdInfo(key);if(!pi)continue;
     const {map,headerRow}=pi,{aoa}=getAoa(key);
     for(let i=headerRow+1;i<aoa.length;i++){
-      if(tick)await tick('Reading Point Master Database');
+      if(tick){const pending=tick('Reading Point Master Database');if(pending)await pending;}
       const row=aoa[i],panel=cleanTag(row[map.PANEL]),tag=cleanTag(row[map['INSTRUMENT TAG']]);
       if(!panel||!tag)continue;
       const parts=pmdPanelMatchParts(panel),panelKey=parts.key;if(!panelKey)continue;
@@ -2762,6 +2820,7 @@ function pmdPanelsForLoad(value){
   return exact?[{panel:exact,building:''}]:(S.pmdSuffixMap.get(key)||[]).map(panel=>({panel,building:panel.building||''}));
 }
 function _attachPmdInstruments(root,collect){
+  if(!S.pmdPanels.length)return 0;
   let attached=0;const linkSeen=new Set();
   const walk=m=>{
     const originalKids=[...m.kids.values()];
@@ -2789,6 +2848,7 @@ function _attachPmdInstruments(root,collect){
 }
 function attachPmdInstruments(root){
   const links=[];S.pmdMatchedPanels=new Set();
+  if(!S.pmdPanels.length){S.pmdLinks=links;return 0;}
   const attached=_attachPmdInstruments(root,links);S.pmdLinks=links;return attached;
 }
 function pmdExportTag(value,building){
@@ -2812,9 +2872,10 @@ function appendPmdSsmRows(rows,includeUnmatched){
     if(linkKeys.has(key)&&row[2]!=null){if(!existingRows.has(key))existingRows.set(key,row);continue;}
     base.push(row);
   }
-  const panelRows=links.map(link=>{const row=existingRows.get(link.loadKey);return row?[link.loadName,...row.slice(1)]:[link.loadName,'',depOf(link.loadName)||depOf(link.panel)||''];});
-  const instrumentRows=links.flatMap(link=>link.instruments.map(rec=>[pmdExportTag(rec.tag,link.building),link.loadName,'']));
-  return [...base,...panelRows,...instrumentRows];
+  const out=[...base];
+  for(const link of links){const row=existingRows.get(link.loadKey);out.push(row?[link.loadName,...row.slice(1)]:[link.loadName,'',depOf(link.loadName)||depOf(link.panel)||'']);}
+  for(const link of links)for(const rec of link.instruments)out.push([pmdExportTag(rec.tag,link.building),link.loadName,'']);
+  return out;
 }
 function uniqueSsmRows(rows){
   const seen=new Set(),out=[];
@@ -2834,10 +2895,14 @@ async function buildHierarchy(){
     let hierRows=0;for(const k of keys)hierRows+=rowsIn(k);
     const total=Math.max(1,cableRows+pmdRows+melRows+hierRows*2);let done=0;
     const READ_LO=.03,READ_HI=.74;
-    const tick=async(label)=>{done++;await maybeYield(report,READ_LO+(READ_HI-READ_LO)*(done/total),label);};
+    const tick=label=>{
+      done++;
+      if((done&127)!==0&&performance.now()-_yT<=28)return null;
+      return maybeYield(report,READ_LO+(READ_HI-READ_LO)*(done/total),label);
+    };
 
     report(.02,'Reading source data');await raf();
-    S.cableStruckTags=new Set();S.placements=[];S._placementId=0;S._melPlacementSeeds=new Map();S.lastPlacementMove=null;
+    S.cableStruckTags=new Set();S.placements=[];S._placementByKey=new Map();S._placementId=0;S._melPlacementSeeds=new Map();S.lastPlacementMove=null;
     const loadTags=await collectLoadDescriptionTags(keys,tick);
     await buildMel(tick);
     await buildDeps(tick);
@@ -2854,7 +2919,7 @@ async function buildHierarchy(){
       const sMap={name:'__root__',kids:new Map()};
       const seenS=new Set(),ssmRows=[];
       for(let i=headerRow+1;i<aoa.length;i++){
-        await tick(label);
+        const pending=tick(label);if(pending)await pending;
         let {segs,hasId,idName,loadDesc,finalSource}=rowToPath(aoa[i],cols,rec,i,loadTags);
         segs=applyMelParentCorrections(gisBusCut(segs),loadDesc,true); // also correct MEL-backed LV transformer parents
         if(!segs.length)continue;
@@ -2923,19 +2988,19 @@ async function buildHierarchy(){
     }
     report(.845,'Linking PMD instruments');await raf();
     const instrumentCount=attachPmdInstruments(combined);
-    for(let i=0;i<sheets.length;i++){_attachPmdInstruments(sheets[i]._sMap,null);await sheetPhase(.845,.86,'Linking PMD instruments',i);}
+    if(S.pmdPanels.length)for(let i=0;i<sheets.length;i++)await sheetPhase(.845,.86,'Deferring per-tab PMD instruments',i);
     report(.86,'Preparing placement review');await raf();
-    bindMelPlacementSeeds(combined);
-    registerMelSystemParentIssues(combined,combinedMelSystemPlan);
+    const needsPlacementIndex=S._melPlacementSeeds.size||combinedMelSystemPlan.warnings.length;
+    const placementIndex=needsPlacementIndex?buildRawHierarchyIndex(combined):null;
+    bindMelPlacementSeeds(combined,placementIndex);
+    registerMelSystemParentIssues(combined,combinedMelSystemPlan,placementIndex);
     enforceSystemRoots(combined,true);for(const sh of sheets)enforceSystemRoots(sh._sMap,false);
     report(.87,'Preparing SSM registers');await raf();
     S.sheets=sheets;S.ssmCombined=uniqueSsmRows(appendPmdSsmRows(finalCombinedRows,true));
-    for(const sh of S.sheets)sh.ssmRows=uniqueSsmRows(appendPmdSsmRows(sh.ssmRows,false));
     report(.88,'Finalizing tree');await raf();
     S.rawCombined=combined;S.roots=finalize(combined); // call last so nodeById matches the displayed combined tree
     // every equipment name in the Easy Power hierarchy (for cable cross-check)
     report(.90,'Indexing equipment');await raf();
-    S.epNameSet=new Set();const collect=n=>{S.epNameSet.add(clean(n.name).toLowerCase());n.children.forEach(collect);};S.roots.forEach(collect);
     if(S.hasCable){report(.91,'Cross-checking cable schedule');await raf();}
     await buildReview(report);
     if(S.wcRows){report(.96,'Comparing working copy');await raf();await buildComparison(report);}
@@ -2953,10 +3018,7 @@ async function buildHierarchy(){
    and prefix-bucket indexes so the fuzzy step stays cheap even on 75k+ names. */
 async function buildReview(report){
   S.review=[];if(!S.hasCable)return;
-  // index over original-case node names, bucketed by normalized-separator prefix
-  const epPref=new Map();
-  const idx=n=>{const nm=clean(n.name);if(nm){const p=normSep(nm).slice(0,3);let a=epPref.get(p);if(!a){a=[];epPref.set(p,a);}a.push(nm);}n.children.forEach(idx);};
-  S.roots.forEach(idx);
+  const epPref=S._reviewEpPref||new Map();
   resetYield();const seen=new Set();
   let totalCable=0;for(const k of S.cableSel){const ci=cableInfo(k);if(ci)totalCable+=Math.max(0,getAoa(k).aoa.length-ci.headerRow-1);}
   totalCable=Math.max(1,totalCable);let cdone=0;
@@ -2977,7 +3039,13 @@ async function buildReview(report){
     }
   }
 }
-function rawSubtreeCount(node){let count=0;const walk=n=>{for(const child of n.kids.values()){count++;walk(child);}};walk(node);return count;}
+function rawSubtreeCount(node){
+  const cache=S._rawSubtreeCounts||(S._rawSubtreeCounts=new WeakMap());
+  if(cache.has(node))return cache.get(node);
+  let count=0;const stack=[...node.kids.values()];
+  while(stack.length){const child=stack.pop();count++;for(const nested of child.kids.values())stack.push(nested);}
+  cache.set(node,count);return count;
+}
 function rawContains(root,target){if(root===target)return true;for(const child of root.kids.values())if(rawContains(child,target))return true;return false;}
 function findRawHolderByNode(root,target){
   for(const [key,node] of root.kids){if(node===target)return {holder:root,key,node};const found=findRawHolderByNode(node,target);if(found)return found;}
@@ -2985,19 +3053,28 @@ function findRawHolderByNode(root,target){
 }
 function nodePath(node){const names=[];for(let cur=node;cur;cur=cur.parent)names.push(cur.name);return names.reverse();}
 function placementExpectedParentRole(branch){const role=equipmentRole(branch);return role==='LVS'?'XFM':role==='XFM'?'GIS':role==='GIS'?'SYSTEM':'';}
-function validPlacementParent(issue,node){
-  if(!issue||!issue.node||!node||!node._raw||node._raw.isInstrument||rawContains(issue.node,node._raw))return false;
+function placementBlockedNodes(issue){
+  if(issue._blockedRevision===S.placementRevision&&issue._blockedNodes)return issue._blockedNodes;
+  const blocked=new Set(),stack=issue.node?[issue.node]:[];
+  while(stack.length){const node=stack.pop();if(blocked.has(node))continue;blocked.add(node);for(const child of node.kids.values())stack.push(child);}
+  issue._blockedRevision=S.placementRevision;issue._blockedNodes=blocked;return blocked;
+}
+function validPlacementParent(issue,node,blocked){
+  if(!issue||!issue.node||!node||!node._raw||node._raw.isInstrument||(blocked||placementBlockedNodes(issue)).has(node._raw))return false;
   const expected=placementExpectedParentRole(issue.branchName);
   if(expected==='SYSTEM')return isSystemName(node.name);
   return expected?hasEquipmentRole(node.name,expected):true;
 }
 function placementCandidates(issue,query){
-  const q=clean(query).toLowerCase(),items=[];
-  const walk=node=>{if(validPlacementParent(issue,node)){
+  const q=clean(query).toLowerCase(),cached=issue._candidateCache;
+  if(cached&&cached.revision===S.placementRevision&&cached.query===q)return cached.items;
+  const items=[],blocked=placementBlockedNodes(issue);
+  const walk=node=>{if(validPlacementParent(issue,node,blocked)){
     const path=nodePath(node),search=(node.name+' '+path.join(' ')).toLowerCase();
     if(!q||search.includes(q)){let score=0;if(tagKey(node.name)===tagKey(issue.suggestedParent))score+=1000;if(issue.suffix&&equipmentSuffix(node.name)===issue.suffix)score+=200;score-=node.depth;items.push({node,path,score});}
   }node.children.forEach(walk);};S.roots.forEach(walk);
-  return items.sort((a,b)=>b.score-a.score||natCmp(a.node.name,b.node.name)).slice(0,60);
+  const result=items.sort((a,b)=>b.score-a.score||natCmp(a.node.name,b.node.name)).slice(0,60);
+  issue._candidateCache={revision:S.placementRevision,query:q,items:result};return result;
 }
 function cloneSsmRows(rows){return rows.map(row=>row.map(value=>value&&typeof value==='object'&&!Array.isArray(value)?{...value}:value));}
 function setBranchRegisterParent(rows,equipment,parent){
@@ -3019,9 +3096,8 @@ function undoRawMove(move){
   else if(move.detachedKey){if(!move.root._detached)move.root._detached=new Map();move.root._detached.set(move.detachedKey,move.node);}
 }
 async function refreshPlacementModels(){
-  S.placementRevision++;clearResultCache();
-  S.roots=finalize(S.rawCombined);for(const sh of S.sheets)sh._roots=null;
-  S.epNameSet=new Set();const collect=n=>{S.epNameSet.add(clean(n.name).toLowerCase());n.children.forEach(collect);};S.roots.forEach(collect);
+  S.placementRevision++;S._rawSubtreeCounts=new WeakMap();clearResultCache();
+  S.roots=finalize(S.rawCombined);for(const sh of S.sheets){sh._roots=null;sh._pmdSsmRows=null;}
   await buildReview();if(S.wcRows)await buildComparison();
   const previous=S.stats||{},computed=computeStats(S.roots);S.stats={...previous,...computed,review:S.review.length+activePlacements().length};
   if(S.tab==='review'&&!S.hasCable&&!activePlacements().length)S.tab='tree';
@@ -3276,7 +3352,11 @@ function mountVirtualRows(tbodySel,rows,makeRow,emptyHtml,opts){
   let frame=0;
   const setInd=t=>{if(ind)ind.textContent=t||'';};
   const remember=()=>{if(opts.cacheName&&opts.key&&opts.panel)rememberPanelCache(opts.cacheName,opts.key,opts.panel,opts.scrollSel);};
-  const render=()=>{
+  const rememberScroll=()=>{
+    const map=opts.cacheName&&S.viewCache[opts.cacheName],hit=map&&map.get(opts.key);
+    if(hit)hit.scroll=panelScroll(opts.scrollSel);
+  };
+  const render=fromScroll=>{
     if(token!==_virtualTok)return;
     if(!rows.length){
       tb.innerHTML=emptyHtml;tb.dataset.virtualStart='0';tb.dataset.virtualRows='0';
@@ -3291,12 +3371,14 @@ function mountVirtualRows(tbodySel,rows,makeRow,emptyHtml,opts){
     const virtualized=rows.length>end-start;
     card.classList.toggle('loading',virtualized);
     setInd(virtualized?`${(start+1).toLocaleString()}-${end.toLocaleString()} / ${rows.length.toLocaleString()}`:'');
-    remember();
+    if(fromScroll)rememberScroll();else remember();
   };
-  const onScroll=()=>{if(token!==_virtualTok)return;if(frame)return;frame=requestAnimationFrame(()=>{frame=0;render();});};
+  const onScroll=()=>{if(token!==_virtualTok)return;if(frame)return;frame=requestAnimationFrame(()=>{frame=0;render(true);});};
+  if(card._virtualScrollHandler)card.removeEventListener('scroll',card._virtualScrollHandler);
+  card._virtualScrollHandler=onScroll;
   card.addEventListener('scroll',onScroll,{passive:true});
-  render();
-  requestAnimationFrame(()=>{if(token===_virtualTok)render();});
+  render(false);
+  requestAnimationFrame(()=>{if(token===_virtualTok)render(false);});
 }
 
 /* ---- Review panel (cable not in Easy Power) ---- */
@@ -3353,7 +3435,7 @@ function refreshReview(){
 function wireReviewPanel(){
   wireCopyTags($('#panel-review'));
   $$('#panel-review [data-review-mode]').forEach(btn=>btn.onclick=()=>{if(S.reviewMode===btn.dataset.reviewMode)return;S.reviewMode=btn.dataset.reviewMode;renderReviewPanel();});
-  const rq=$('#rq');if(rq){let d;rq.addEventListener('input',()=>{clearTimeout(d);d=setTimeout(()=>{S.revSearch=rq.value;refreshReview();},220);});}
+  const rq=$('#rq');if(rq){let d;rq.oninput=()=>{clearTimeout(d);d=setTimeout(()=>{S.revSearch=rq.value;refreshReview();},220);};}
   const rqx=$('#rqx');if(rqx)rqx.onclick=()=>{S.revSearch='';const i=$('#rq');if(i){i.value='';i.focus();}$('#rqx').classList.remove('show');refreshReview();};
   const rp=$('#rpct');if(rp){let d;rp.addEventListener('input',()=>{clearTimeout(d);d=setTimeout(()=>{const v=parseFloat(rp.value);S.revMinPct=(rp.value===''||isNaN(v))?null:Math.max(0,Math.min(100,v));refreshReview();},220);});}
   $$('#panel-review th.sortable').forEach(th=>th.onclick=()=>{
@@ -3517,7 +3599,7 @@ function refreshCompare(){
 function wireComparePanel(){
   wireCopyTags($('#panel-compare'));
   $$('[data-cf]').forEach(b=>b.onclick=()=>{S.cmpFilter=b.dataset.cf;renderComparePanel();});
-  const cq=$('#cq');if(cq){let d;cq.addEventListener('input',()=>{clearTimeout(d);d=setTimeout(()=>{S.cmpSearch=cq.value;renderComparePanel();},250);});}
+  const cq=$('#cq');if(cq){let d;cq.oninput=()=>{clearTimeout(d);d=setTimeout(()=>{S.cmpSearch=cq.value;renderComparePanel();},250);};}
   const cqx=$('#cqx');if(cqx)cqx.onclick=()=>{S.cmpSearch='';renderComparePanel();};
   const diff=$('#cmpDiff');if(diff)diff.onchange=()=>{S.cmpDiff=diff.value;const card=$('#cmpCard');if(card)card.scrollTop=0;refreshCompare();};
   $$('#panel-compare th.sortable').forEach(th=>th.onclick=()=>{
@@ -3934,7 +4016,7 @@ async function exportExtoSSMXlsx(){
   if(S.sheets.length>1){mode=await askExportMode('Exto SSM');if(!mode)return;}
   if(await runExport('Exto SSM',ssmExportRows(),()=>{
     const wb=XLSX.utils.book_new(),used=new Set();
-    if(mode==='separate')S.sheets.forEach(sh=>addExtoSheet(wb,'SSM-'+sh.sheetName,sh.ssmRows,used));
+    if(mode==='separate')S.sheets.forEach(sh=>addExtoSheet(wb,'SSM-'+sh.sheetName,sheetSsmRows(sh),used));
     else addExtoSheet(wb,'Exto SSM',S.ssmCombined,used);
     addReviewSheet(wb,used);addPlacementReviewSheet(wb,used);addCompareSheet(wb,used);
     downloadBlob('exto-ssm-export.xlsx',wbBlob(wb));
@@ -3946,7 +4028,7 @@ async function exportSSMXlsx(){
   if(S.sheets.length>1){mode=await askExportMode('SSM');if(!mode)return;}
   if(await runExport('SSM',ssmExportRows(),()=>{
     const wb=XLSX.utils.book_new(),used=new Set();
-    if(mode==='separate')S.sheets.forEach(sh=>addSsm3Sheet(wb,'SSM-'+sh.sheetName,sh.ssmRows,used));
+    if(mode==='separate')S.sheets.forEach(sh=>addSsm3Sheet(wb,'SSM-'+sh.sheetName,sheetSsmRows(sh),used));
     else addSsm3Sheet(wb,'SSM',S.ssmCombined,used);
     addReviewSheet(wb,used);addPlacementReviewSheet(wb,used);addCompareSheet(wb,used);
     downloadBlob('ssm-export.xlsx',wbBlob(wb));
@@ -3999,7 +4081,7 @@ function openPlacementDrawer(issueId){
     if(selected){const path=[...nodePath(selected),issue.branchName].join(' / ');preview.hidden=false;preview.innerHTML=`Branch will move with all descendants:<code>${esc(path)}</code>`;move.disabled=false;}
     else{preview.hidden=true;move.disabled=true;}
   };
-  search.oninput=paint;move.onclick=()=>selected&&movePlacementBranch(issue.id,selected.id);
+  let searchTimer;search.oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(paint,140);};move.onclick=()=>selected&&movePlacementBranch(issue.id,selected.id);
   const accept=$('#acceptPlacement');if(accept)accept.onclick=()=>acceptPlacement(issue.id);
   const undo=$('#drawerPlacementUndo');if(undo)undo.onclick=async()=>{closeDrawer();await undoPlacement();};
   paint();$('#drawer').classList.add('show');

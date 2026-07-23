@@ -327,7 +327,7 @@ test('Cable Schedule chains replace duplicate parents and add missing hierarchy 
 
 test('Equipment_List tabs auto-select and index MEL Equipment Tag and UPN values', () => {
   assert.match(html, /melSel:new Set\(\)/)
-  assert.match(html, /melRows:\[\],melByTag:new Map\(\),melByNorm:new Map\(\),melBySuffix:new Map\(\),melByGram:new Map\(\),melLookupCache:new Map\(\),melXfmBySuffix:new Map\(\)/)
+  assert.match(html, /melRows:\[\],melByTag:new Map\(\),melByNorm:new Map\(\),melBySuffix:new Map\(\),melByGram:new Map\(\),melLookupCache:new Map\(\),melContainingCache:new Map\(\),melXfmBySuffix:new Map\(\)/)
   assert.match(html, /const MEL_SHEET_NAME='equipmentlist'/)
   assert.match(html, /function isMelSheet\(key\)/)
   assert.match(html, /function detectMel\(headers\)/)
@@ -746,7 +746,7 @@ test('unanchored Cable Schedule chains are reviewed without becoming hierarchy r
 test('System roots and manual placement keep complete branches under valid role parents', () => {
   assert.match(html, /const SYSTEM_NAMES=new Set\(\[tagKey\(GIS_PARENT\)\]\)/)
   assert.match(html, /function enforceSystemRoots\(root,collect\)/)
-  assert.match(html, /function validPlacementParent\(issue,node\)/)
+  assert.match(html, /function validPlacementParent\(issue,node,blocked\)/)
   assert.match(html, /function moveRawNode\(root,node,target\)/)
   assert.match(html, /function undoRawMove\(move\)/)
   const value = runInNewContext(`${customScript}
@@ -826,11 +826,13 @@ test('PMD workbooks auto-select INSTALL PMD and add instrument hierarchy metadat
 test('PMD rows are appended to SSM data with panels before instruments', () => {
   assert.match(html, /function appendPmdSsmRows\(rows,includeUnmatched\)/)
   assert.match(html, /function pmdExportTag\(value,building\)/)
-  assert.match(html, /const panelRows=links\.map\(link=>\{const row=existingRows\.get\(link\.loadKey\);return row\?\[link\.loadName,\.\.\.row\.slice\(1\)\]:\[link\.loadName,'',depOf\(link\.loadName\)\|\|depOf\(link\.panel\)\|\|''\];\}\)/)
-  assert.match(html, /const instrumentRows=links\.flatMap\(link=>link\.instruments\.map\(rec=>\[pmdExportTag\(rec\.tag,link\.building\),link\.loadName,''\]\)\)/)
-  assert.match(html, /return \[\.\.\.base,\.\.\.panelRows,\.\.\.instrumentRows\]/)
+  assert.match(html, /const out=\[\.\.\.base\]/)
+  assert.match(html, /for\(const link of links\)\{const row=existingRows\.get\(link\.loadKey\);out\.push\(row\?\[link\.loadName,\.\.\.row\.slice\(1\)\]:\[link\.loadName,'',depOf\(link\.loadName\)\|\|depOf\(link\.panel\)\|\|''\]\);\}/)
+  assert.match(html, /for\(const link of links\)for\(const rec of link\.instruments\)out\.push\(\[pmdExportTag\(rec\.tag,link\.building\),link\.loadName,''\]\)/)
+  assert.match(html, /function sheetSsmRows\(sh\)/)
+  assert.match(html, /sh\._pmdSsmRows=uniqueSsmRows\(appendPmdSsmRows\(sh\.ssmRows,false\)\)/)
   assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(finalCombinedRows,true\)\)/)
-  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(sh\.ssmRows,false\)\)/)
+  assert.doesNotMatch(html, /for\(const sh of S\.sheets\)sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows/)
 })
 
 test('PMD base panels link to both CPS and NPS load variants with duplicated instruments', () => {
@@ -993,7 +995,8 @@ test('large review and comparison tables virtualize rows and cache search work',
   assert.match(html, /tb\.dataset\.virtualRows/)
   assert.match(html, /Math\.floor\(card\.scrollTop\/VIRTUAL_ROW_HEIGHT\)-VIRTUAL_OVERSCAN/)
   assert.match(html, /Math\.min\(Math\.max\(0,rows\.length-visible\),Math\.max\(0,Math\.floor\(card\.scrollTop\/VIRTUAL_ROW_HEIGHT\)-VIRTUAL_OVERSCAN\)\)/)
-  assert.match(html, /requestAnimationFrame\(\(\)=>\{if\(token===_virtualTok\)render\(\);\}\)/)
+  assert.match(html, /requestAnimationFrame\(\(\)=>\{if\(token===_virtualTok\)render\(false\);\}\)/)
+  assert.match(html, /card\._virtualScrollHandler=onScroll/)
   assert.match(html, /function idleFrame\(\)/)
   assert.match(html, /requestIdleCallback/)
   assert.match(html, /function reviewSearchKey\(r\)/)
@@ -1284,12 +1287,90 @@ test('MAH normalization merges large variant groups without repeated child scans
   assert.ok(result.elapsed < 750, `indexed MAH normalization took ${result.elapsed}ms`)
 })
 
+test('missing optional PMD, MEL, and Cable sources take constant-time fast paths', () => {
+  assert.match(html, /function hasMelData\(\)/)
+  assert.match(html, /if\(!S\.pmdPanels\.length\)\{S\.pmdLinks=links;return 0;\}/)
+  assert.match(html, /if\(!S\.hasCable&&!S\.deps\.size\)return \{relations:new Map\(\),seeds:new Set\(\),generated:new Set\(\),unresolved:\[\]\}/)
+  const value = runInNewContext(`${customScript}
+    S.melRows=[];S.melByTag=new Map();S.melByNorm=new Map();S.melXfmBySuffix=new Map();
+    S.pmdPanels=[];S.pmdLinks=[{loadName:'stale'}];S.deps=new Map();S.hasCable=false;
+    S._melPlacementSeeds=new Map();S.placements=[];S._placementByKey=new Map();S._placementId=0;
+    const corrected=applyMelParentCorrections(['ROOT-XFMX372B','LOAD-LVSY373B'],'',true);
+    const melPlan=buildMelSystemParentPlan([['LOAD-LVSY373B','ROOT-XFMX372B']]);
+    const cablePlan=buildCableParentPlan([['LOAD-LVSY373B','ROOT-XFMX372B','ROOT-XFMX372B']]);
+    const guardedRoot={get kids(){throw new Error('empty PMD path traversed the hierarchy')}};
+    const attached=attachPmdInstruments(guardedRoot);
+    bindMelPlacementSeeds(guardedRoot);
+    JSON.stringify({
+      corrected,seeds:S._melPlacementSeeds.size,placements:S.placements.length,
+      melCorrections:melPlan.corrections.size,melWarnings:melPlan.warnings.length,
+      cableRelations:cablePlan.relations.size,cableSeeds:cablePlan.seeds.size,
+      attached,pmdLinks:S.pmdLinks.length
+    });
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), {
+    corrected: ['ROOT-XFMX372B', 'LOAD-LVSY373B'],
+    seeds: 0,
+    placements: 0,
+    melCorrections: 0,
+    melWarnings: 0,
+    cableRelations: 0,
+    cableSeeds: 0,
+    attached: 0,
+    pmdLinks: 0,
+  })
+})
+
+test('placement registration and natural sorting stay indexed at large scale', () => {
+  assert.match(html, /const NAT_COLLATOR=new Intl\.Collator/)
+  assert.match(html, /existing=byKey\.get\(key\)/)
+  assert.match(html, /byKey\.set\(key,item\)/)
+  const value = runInNewContext(`${customScript}
+    S.placements=[];S._placementByKey=new Map();S._placementId=0;
+    const started=Date.now(),count=30000;
+    for(let i=0;i<count;i++)registerPlacement({branchName:'TAG-'+i,currentParent:'PARENT-'+i,suggestedParent:'',status:'missing-data',source:'MEL'});
+    for(let i=0;i<count;i+=1000)registerPlacement({branchName:'TAG-'+i,currentParent:'PARENT-'+i,suggestedParent:'',status:'missing-data',source:'MEL'});
+    const elapsed=Date.now()-started;
+    const sorted=['TAG-10','TAG-2','tag-1'].sort(natCmp);
+    JSON.stringify({elapsed,placements:S.placements.length,indexed:S._placementByKey.size,sorted});
+  `, { console, setTimeout, clearTimeout })
+  const result = JSON.parse(value)
+  assert.equal(result.placements, 30000)
+  assert.equal(result.indexed, 30000)
+  assert.deepEqual(result.sorted, ['tag-1', 'TAG-2', 'TAG-10'])
+  assert.ok(result.elapsed < 1000, `indexed placement registration took ${result.elapsed}ms`)
+})
+
+test('per-tab PMD hierarchy and register rows materialize only when exported', () => {
+  assert.match(html, /function sheetRoots\(sh\)/)
+  assert.match(html, /function sheetSsmRows\(sh\)/)
+  assert.match(html, /if\(!sh\._pmdAttached&&S\.pmdPanels\.length\)/)
+  const value = runInNewContext(`${customScript}
+    const panel={key:pmdPanelKey('PANEL-1'),panel:'PANEL-1',instruments:[{key:'inst-1',tag:'INST-1',description:'Instrument'}]};
+    S.pmdPanels=[panel];S.pmdPanelMap=new Map([[panel.key,panel]]);S.pmdSuffixMap=new Map();
+    const combinedLoad={name:'PANEL-1',kids:new Map(),isLoad:true},combined={name:'__root__',kids:new Map([['PANEL-1',combinedLoad]])};
+    attachPmdInstruments(combined);
+    const sheetLoad={name:'PANEL-1',kids:new Map(),isLoad:true};
+    const sh={_sMap:{name:'__root__',kids:new Map([['PANEL-1',sheetLoad]])},ssmRows:[['PANEL-1','PARENT','DEP']]};
+    const before=sheetLoad.kids.size,rows=sheetSsmRows(sh),roots=sheetRoots(sh);
+    JSON.stringify({before,after:sheetLoad.kids.size,rowCount:rows.length,lastRow:rows[rows.length-1],instrument:roots[0].children[0].name,pmdAttached:sh._pmdAttached});
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), {
+    before: 0,
+    after: 1,
+    rowCount: 2,
+    lastRow: ['INST-1', 'PANEL-1', ''],
+    instrument: 'INST-1',
+    pmdAttached: true,
+  })
+})
+
 test('SSM registers keep one normalized Equipment ID across hierarchy and PMD rows', () => {
   assert.match(html, /function uniqueSsmRows\(rows\)\{/)
   assert.match(html, /const seen=new Set\(\),out=\[\];/)
   assert.match(html, /const key=tagKey\(row&&row\[0\]\);if\(!key\|\|seen\.has\(key\)\)continue;seen\.add\(key\);out\.push\(row\)/)
   assert.match(html, /S\.ssmCombined=uniqueSsmRows\(appendPmdSsmRows\(finalCombinedRows,true\)\)/)
-  assert.match(html, /sh\.ssmRows=uniqueSsmRows\(appendPmdSsmRows\(sh\.ssmRows,false\)\)/)
+  assert.match(html, /sh\._pmdSsmRows=uniqueSsmRows\(appendPmdSsmRows\(sh\.ssmRows,false\)\)/)
   assert.match(html, /function filterSsm\(rows\)\{return uniqueSsmRows\(rows\)\.filter/)
   const value = runInNewContext(`${customScript}
     JSON.stringify(uniqueSsmRows([
