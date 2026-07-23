@@ -1135,6 +1135,68 @@ test('SCR, SCC, CIM, and GIS parent overrides preserve extracted dependencies', 
   })
 })
 
+test('MAH suffix variants become dependencies beneath the base MAH parent', () => {
+  assert.match(html, /function mahClosestParent\(value\)/)
+  assert.match(html, /const parent=cleanTag\(full\.slice\(0,underscore\)\)/)
+  assert.match(html, /return \/-MAH\/i\.test\(parent\)\?parent:''/)
+  assert.match(html, /function repairMahHierarchyParents\(root\)/)
+  assert.match(html, /child\.dependencyOverride=full/)
+  assert.match(html, /function repairMahSsmRows\(rows\)/)
+  assert.match(html, /if\(parent\)\{fixed\[1\]=parent;fixed\[2\]=full;\}/)
+  assert.match(html, /repairMahHierarchyParents\(combined\);finalCombinedRows=repairMahSsmRows\(finalCombinedRows\)/)
+  assert.match(html, /repairMahHierarchyParents\(sh\._sMap\);sh\.ssmRows=repairMahSsmRows\(sh\.ssmRows\)/)
+  assert.match(html, /function countTreeDependencies\(roots\)/)
+  assert.match(html, /S\.stats\.deps=countTreeDependencies\(S\.roots\)/)
+  assert.match(html, /S\.showDeps=!!\(S\.stats&&S\.stats\.deps\)/)
+  assert.match(html, /\$\{st\.deps\?`<button class="chip \$\{S\.showDeps\?'on':''\}" id="tgDeps"/)
+
+  const value = runInNewContext(`${customScript}
+    const fullMah='R22-MAH777-99-00_MED-B';
+    const xyz={name:'XYZ',kids:new Map(),isId:true};
+    const full={name:fullMah,kids:new Map([[xyz.name,xyz]]),isId:false};
+    const existingXyz={name:'XYZ',kids:new Map(),isId:true,dependencyOverride:'OLD-DEPENDENCY'};
+    const existingBase={name:'R22-MAH777-99-00',kids:new Map([[existingXyz.name,existingXyz]]),isId:false};
+    const upstream={name:'UPSTREAM',kids:new Map([[existingBase.name,existingBase],[full.name,full]]),isId:false};
+    const root={name:'__root__',kids:new Map([[upstream.name,upstream]])};
+    repairMahHierarchyParents(root);
+    const base=upstream.kids.get('R22-MAH777-99-00');
+    const repairedRows=repairMahSsmRows([
+      ['UPSTREAM',''],
+      [fullMah,'UPSTREAM'],
+      ['XYZ',fullMah],
+      ['UNCHANGED','OTHER-PARENT','OTHER-DEPENDENCY']
+    ]);
+    JSON.stringify({
+      examples:[
+        mahClosestParent(fullMah),
+        mahClosestParent('R22-MAH777-99-00_EXTRA_MORE'),
+        mahClosestParent('R22-MAH777-99-00'),
+        mahClosestParent('R22-PANEL-1_SUFFIX')
+      ],
+      hierarchy:{
+        hasBase:!!base,
+        hasFull:upstream.kids.has(fullMah),
+        childDependency:base&&base.kids.get('XYZ').dependencyOverride
+      },
+      rows:repairedRows.map(ssmResolve)
+    });
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), {
+    examples: ['R22-MAH777-99-00', 'R22-MAH777-99-00', '', ''],
+    hierarchy: {
+      hasBase: true,
+      hasFull: false,
+      childDependency: 'R22-MAH777-99-00_MED-B',
+    },
+    rows: [
+      { equip: 'UPSTREAM', parent: '', dep: '', keepDuplicateDep: false },
+      { equip: 'R22-MAH777-99-00', parent: 'UPSTREAM', dep: '', keepDuplicateDep: false },
+      { equip: 'XYZ', parent: 'R22-MAH777-99-00', dep: 'R22-MAH777-99-00_MED-B', keepDuplicateDep: false },
+      { equip: 'UNCHANGED', parent: 'OTHER-PARENT', dep: 'OTHER-DEPENDENCY', keepDuplicateDep: false },
+    ],
+  })
+})
+
 test('SSM registers keep one normalized Equipment ID across hierarchy and PMD rows', () => {
   assert.match(html, /function uniqueSsmRows\(rows\)\{/)
   assert.match(html, /const seen=new Set\(\),out=\[\];/)

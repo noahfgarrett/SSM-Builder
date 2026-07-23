@@ -661,7 +661,7 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.27';
+const APP_VERSION = '1.1.28';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
@@ -669,6 +669,13 @@ let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 let updateModalDismissed=false;
 const CHANGELOG=[
+  {
+    version:'1.1.28',
+    date:'2026-07-23T16:30:40Z',
+    type:'feature',
+    stats:{features:1},
+    notes:`- Added MAH parent splitting so suffixed MAH tags remain dependencies`
+  },
   {
     version:'1.1.27',
     date:'2026-07-23T16:12:31Z',
@@ -1736,6 +1743,11 @@ function computeStats(roots){
   roots.forEach(walk);
   return {nodes,leaves,maxDepth:maxDepth+1,idCount,sources:roots.length};
 }
+function countTreeDependencies(roots){
+  let count=0;
+  const walk=node=>{if(nodeDep(node))count++;node.children.forEach(walk);};
+  roots.forEach(walk);return count;
+}
 
 /* ---- steps / routing ---- */
 function renderSteps(){
@@ -2137,6 +2149,49 @@ function mergeRawHierarchyNode(target,source){
     if(existing)mergeRawHierarchyNode(existing[1],child);else target.kids.set(child.name,child);
   }
   return target;
+}
+function mahClosestParent(value){
+  const full=cleanTag(value),underscore=full.indexOf('_');
+  if(underscore<1)return '';
+  const parent=cleanTag(full.slice(0,underscore));
+  return /-MAH/i.test(parent)?parent:'';
+}
+function repairMahHierarchyParents(root){
+  let repaired=0;
+  const walk=holder=>{
+    for(const [key,node] of [...holder.kids.entries()]){
+      const full=cleanTag(node.name),parent=mahClosestParent(full);let next=node;
+      if(parent&&node.kids.size&&tagKey(parent)!==tagKey(full)){
+        const childNames=[...node.kids.values()].map(child=>child.name);
+        for(const child of node.kids.values())child.dependencyOverride=full;
+        holder.kids.delete(key);
+        const existing=rawKidEntry(holder.kids,parent);
+        if(existing)next=mergeRawHierarchyNode(existing[1],node);
+        else{node.name=parent;holder.kids.set(parent,node);}
+        for(const childName of childNames){
+          const child=rawKidEntry(next.kids,childName);
+          if(child)child[1].dependencyOverride=full;
+        }
+        repaired++;
+      }
+      walk(next);
+    }
+  };
+  walk(root);return repaired;
+}
+function repairMahSsmRows(rows){
+  const replacements=new Map();
+  for(const row of rows){
+    const full=cleanRegisterTag(row&&row[1]),parent=mahClosestParent(full);
+    if(parent)replacements.set(tagKey(full),{full,parent});
+  }
+  return rows.map(row=>{
+    const fixed=[...row],equipmentReplacement=replacements.get(tagKey(fixed[0]));
+    if(equipmentReplacement)fixed[0]=equipmentReplacement.parent;
+    const full=cleanRegisterTag(fixed[1]),parent=mahClosestParent(full);
+    if(parent){fixed[1]=parent;fixed[2]=full;}
+    return fixed;
+  });
 }
 const GIS_PARENT='602 Medium Voltage';
 const SYSTEM_NAMES=new Set([tagKey(GIS_PARENT)]);
@@ -2706,11 +2761,13 @@ async function buildHierarchy(){
     repairMelSystemParentHierarchy(combined,combinedMelSystemPlan);
     S.melParentChecks=combinedMelSystemPlan.checks;
     finalCombinedRows=repairMelSystemParentSsmRows(finalCombinedRows,combinedMelSystemPlan);
+    repairMahHierarchyParents(combined);finalCombinedRows=repairMahSsmRows(finalCombinedRows);
     for(const sh of sheets){
       const prepared=repairEasyPowerSsmRows(repairMelSsmRows(sh.ssmRows)),plan=buildCableParentPlan(prepared);
       repairCableHierarchyParents(sh._sMap,plan);sh.ssmRows=repairCableSsmRows(prepared,plan);
       const melSystemPlan=buildMelSystemParentPlan(sh.ssmRows);
       repairMelSystemParentHierarchy(sh._sMap,melSystemPlan);sh.ssmRows=repairMelSystemParentSsmRows(sh.ssmRows,melSystemPlan);
+      repairMahHierarchyParents(sh._sMap);sh.ssmRows=repairMahSsmRows(sh.ssmRows);
     }
     report(.80,'Linking PMD instruments');await raf();
     const instrumentCount=attachPmdInstruments(combined);
@@ -2731,11 +2788,11 @@ async function buildHierarchy(){
     S.stats=computeStats(S.roots);
     S.stats.rowsRead=rowsRead;S.stats.tabs=keys.length;
     S.stats.files=new Set(keys.map(k=>k.split(KEYSEP)[0])).size;
-    S.stats.deps=S.deps.size;S.stats.loads=loadCount;S.stats.instruments=instrumentCount;S.stats.review=S.review.length+activePlacements().length;
+    S.stats.deps=countTreeDependencies(S.roots);S.stats.loads=loadCount;S.stats.instruments=instrumentCount;S.stats.review=S.review.length+activePlacements().length;
     report(1,'Done');
   });
   if(!S.roots.length){toast('No hierarchy rows found in the selected tabs');return;}
-  S.search='';S.idOnly=false;S.showSpares=true;S.showSpaces=true;S.showDeps=S.hasCable||(S.stats&&S.stats.loads>0);S.showPmdMatches=true;
+  S.search='';S.idOnly=false;S.showSpares=true;S.showSpaces=true;S.showDeps=!!(S.stats&&S.stats.deps);S.showPmdMatches=true;
   S.cmpFilter='all';S.cmpSearch='';S.cmpDiff='all';S.cmpSort=null;S.tab='tree';go('result');
 }
 /* Cable Schedule loads with no exact match in Easy Power. Uses normalized-separator
@@ -2915,7 +2972,7 @@ function renderResult(){
       ${st.loads?statCard('corner-down-right','Loads',st.loads):''}
       ${st.instruments?statCard('database','Instruments',st.instruments):''}
       ${statCard('layers','Levels',st.maxDepth)}
-      ${S.hasCable?statCard('spline','Deps',st.deps):''}
+      ${st.deps?statCard('spline','Deps',st.deps):''}
     </div></div>
     <div class="tabbar">
       ${tab('tree','Hierarchy','list-tree')}
@@ -2930,7 +2987,7 @@ function renderResult(){
         <button class="chip ${S.idOnly?'on':''}" id="idOnly" aria-pressed="${S.idOnly}" title="Match only ID Names (final loads)">${ic('tag')}ID Names only</button>
         <button class="chip ${S.showSpares?'on':''}" id="tgSpares" aria-pressed="${S.showSpares}" title="Show spares (SP- prefix)">${ic('square-stack')}Spares</button>
         <button class="chip ${S.showSpaces?'on':''}" id="tgSpaces" aria-pressed="${S.showSpaces}" title="Show spaces (&quot;Space&quot;)">${ic('minus')}Spaces</button>
-        ${(S.hasCable||st.loads)?`<button class="chip ${S.showDeps?'on':''}" id="tgDeps" aria-pressed="${S.showDeps}" title="Show dependencies">${ic('spline')}Dependencies</button>`:''}
+        ${st.deps?`<button class="chip ${S.showDeps?'on':''}" id="tgDeps" aria-pressed="${S.showDeps}" title="Show dependencies">${ic('spline')}Dependencies</button>`:''}
         ${st.instruments?`<button class="chip ${S.showPmdMatches?'on':''}" id="tgPmd" aria-pressed="${S.showPmdMatches}" title="Show matched PMD panels">${ic('database')}PMD panels</button>`:''}
       </div>
       <div class="toolbar">
