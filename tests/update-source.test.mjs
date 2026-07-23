@@ -275,7 +275,7 @@ test('Cable Schedule chains replace duplicate parents and add missing hierarchy 
 
 test('Equipment_List tabs auto-select and index MEL Equipment Tag and UPN values', () => {
   assert.match(html, /melSel:new Set\(\)/)
-  assert.match(html, /melRows:\[\],melByTag:new Map\(\),melByNorm:new Map\(\),melXfmBySuffix:new Map\(\)/)
+  assert.match(html, /melRows:\[\],melByTag:new Map\(\),melByNorm:new Map\(\),melBySuffix:new Map\(\),melLookupCache:new Map\(\),melXfmBySuffix:new Map\(\)/)
   assert.match(html, /const MEL_SHEET_NAME='equipmentlist'/)
   assert.match(html, /function isMelSheet\(key\)/)
   assert.match(html, /function detectMel\(headers\)/)
@@ -310,6 +310,7 @@ test('Equipment_List tabs auto-select and index MEL Equipment Tag and UPN values
 
 test('MEL UPN checks evaluate every extracted Comparison Equipment ID', () => {
   assert.match(html, /function firstSystemParentTag\(value\)/)
+  assert.match(html, /function melTagLookup\(value\)/)
   assert.match(html, /function buildMelSystemParentPlan\(rows\)/)
   assert.match(html, /function repairMelSystemParentHierarchy\(root,plan\)/)
   assert.match(html, /function repairMelSystemParentSsmRows\(rows,plan\)/)
@@ -385,6 +386,8 @@ test('MEL UPN checks evaluate every extracted Comparison Equipment ID', () => {
       sourceParent: 'GIS-1',
       equipmentUpn: '373',
       parentUpn: '372',
+      equipmentMelTag: 'EQUIPMENT-A',
+      parentMelTag: 'OLD-PARENT',
     },
     warnings: [
       { equip: 'MISSING-UPN', missingField: 'Equipment UPN' },
@@ -418,6 +421,81 @@ test('MEL UPN checks evaluate every extracted Comparison Equipment ID', () => {
       'missing-system-parent': 'warning',
       'equipment-a': 'corrected',
     },
+  })
+})
+
+test('MEL UPN correction resolves Equipment IDs contained in row-2 MEL tags', () => {
+  const value = runInNewContext(`${customScript}
+    S.melRows=[
+      {tag:'F15-EQUIPMENT-133',upn:'133',systemParent:'F15-SYSTEM-PARENT-133'},
+      {tag:'F15-OLD-PARENT-603',upn:'603',systemParent:''}
+    ];
+    S.melByTag=new Map(S.melRows.map(rec=>[tagKey(rec.tag),rec]));
+    S.melByNorm=new Map(S.melRows.map(rec=>[normSep(rec.tag),rec]));
+    S.melBySuffix=new Map();
+    S.melLookupCache=new Map();
+    const equipment={name:'EQUIPMENT-133',kids:new Map(),isId:true};
+    const oldParent={name:'OLD-PARENT-603',kids:new Map([[equipment.name,equipment]]),isId:false};
+    const root={name:'__root__',kids:new Map([[oldParent.name,oldParent]])};
+    const rows=[['OLD-PARENT-603',''],['EQUIPMENT-133','OLD-PARENT-603']];
+    const plan=buildMelSystemParentPlan(rows);
+    repairMelSystemParentHierarchy(root,plan);
+    const repaired=repairMelSystemParentSsmRows(rows,plan).map(ssmResolve);
+    JSON.stringify({
+      row2:detectMel(['Equipment Tag','UPN','System Parent Equipment Tag(s)']),
+      correction:[...plan.corrections.values()][0],
+      rootKids:[...root.kids.keys()],
+      newParentKids:[...root.kids.get('F15-SYSTEM-PARENT-133').kids.keys()],
+      dependency:root.kids.get('F15-SYSTEM-PARENT-133').kids.get('EQUIPMENT-133').dependencyOverride,
+      repaired
+    });
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), {
+    row2: { tag: 0, upn: 1, building: -1, systemParent: 2 },
+    correction: {
+      equip: 'EQUIPMENT-133',
+      currentParent: 'OLD-PARENT-603',
+      newParent: 'F15-SYSTEM-PARENT-133',
+      sourceParent: '',
+      equipmentUpn: '133',
+      parentUpn: '603',
+      equipmentMelTag: 'F15-EQUIPMENT-133',
+      parentMelTag: 'F15-OLD-PARENT-603',
+    },
+    rootKids: ['OLD-PARENT-603', 'F15-SYSTEM-PARENT-133'],
+    newParentKids: ['EQUIPMENT-133'],
+    dependency: 'OLD-PARENT-603',
+    repaired: [
+      { equip: 'OLD-PARENT-603', parent: '', dep: '', keepDuplicateDep: false },
+      { equip: 'F15-SYSTEM-PARENT-133', parent: '', dep: '', keepDuplicateDep: false },
+      { equip: 'EQUIPMENT-133', parent: 'F15-SYSTEM-PARENT-133', dep: 'OLD-PARENT-603', keepDuplicateDep: false },
+    ],
+  })
+})
+
+test('MEL contained-tag lookup flags ambiguous Equipment IDs instead of choosing a row', () => {
+  const value = runInNewContext(`${customScript}
+    S.melRows=[
+      {tag:'F15-EQUIPMENT-133',upn:'133',systemParent:'F15-SYSTEM-PARENT-133'},
+      {tag:'G22-EQUIPMENT-133',upn:'133',systemParent:'G22-SYSTEM-PARENT-133'},
+      {tag:'F15-OLD-PARENT-603',upn:'603',systemParent:''}
+    ];
+    S.melByTag=new Map(S.melRows.map(rec=>[tagKey(rec.tag),rec]));
+    S.melByNorm=new Map(S.melRows.map(rec=>[normSep(rec.tag),rec]));
+    S.melBySuffix=new Map();
+    S.melLookupCache=new Map();
+    const plan=buildMelSystemParentPlan([['EQUIPMENT-133','OLD-PARENT-603']]);
+    JSON.stringify({
+      corrections:plan.corrections.size,
+      warning:plan.warnings.map(item=>({missingField:item.missingField,reason:item.reason}))
+    });
+  `, { console, setTimeout, clearTimeout })
+  assert.deepEqual(JSON.parse(value), {
+    corrections: 0,
+    warning: [{
+      missingField: 'Unique Equipment Tag match',
+      reason: 'MEL parent check skipped because EQUIPMENT-133 matched multiple MEL Equipment Tags',
+    }],
   })
 })
 
@@ -594,11 +672,12 @@ test('Review separates cross-sheet tags from hierarchy placement work', () => {
 })
 
 test('MEL UPN values appear in hierarchy details and requested SSM columns', () => {
-  assert.match(html, /melRecord\(node\.name\).*rowinfo/)
+  assert.match(html, /melResolvedRecord\(node\.name\).*rowinfo/)
   assert.match(html, /S\.melParentChecks\.has\(tagKey\(node\.name\)\).*rowinfo/)
-  assert.match(html, /const pmd=node\.pmdKey\?S\.pmdDetail\.get\(node\.pmdKey\):null,mel=melRecord\(node\.name\)/)
+  assert.match(html, /const pmd=node\.pmdKey\?S\.pmdDetail\.get\(node\.pmdKey\):null,mel=melResolvedRecord\(node\.name\)/)
   assert.match(html, /const melCheck=S\.melParentChecks\.get\(tagKey\(node\.name\)\)/)
   assert.match(html, /fld\('MEL parent check',result\)/)
+  assert.match(html, /fld\('Matched MEL Equipment Tag',melCheck\.equipmentMelTag\)/)
   assert.match(html, /if\(S\.melRows\.length\)html\+=fld\('UPN',mel\?mel\.upn:''\)/)
   assert.match(html, /const G=6,K=10,P=15,AM=38,W=39/)
   assert.match(html, /head\[G\]='UPN';head\[K\]='Equipment ID'/)

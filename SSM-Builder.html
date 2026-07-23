@@ -654,13 +654,20 @@ function ic(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fil
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.24';
+const APP_VERSION = '1.1.25';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
 let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 const CHANGELOG=[
+  {
+    version:'1.1.25',
+    date:'2026-07-23T14:14:15Z',
+    type:'fix',
+    stats:{fixes:1},
+    notes:`- Fixed MEL System Parent corrections when Equipment IDs are contained inside building-prefixed MEL tags`
+  },
   {
     version:'1.1.24',
     date:'2026-07-23T13:55:40Z',
@@ -1187,7 +1194,7 @@ const S={screen:'upload',files:[],selected:new Set(),cableSel:new Set(),pmdSel:n
   showSpares:true,showSpaces:true,showDeps:true,showPmdMatches:true,deps:new Map(),depDetail:new Map(),hasCable:false,
   cableStruckTags:new Set(),
   pmdRows:[],pmdPanels:[],pmdLinks:[],pmdPanelMap:new Map(),pmdSuffixMap:new Map(),pmdDetail:new Map(),pmdMatchedPanels:new Set(),
-  melRows:[],melByTag:new Map(),melByNorm:new Map(),melXfmBySuffix:new Map(),melParentChecks:new Map(),
+  melRows:[],melByTag:new Map(),melByNorm:new Map(),melBySuffix:new Map(),melLookupCache:new Map(),melXfmBySuffix:new Map(),melParentChecks:new Map(),
   epDetail:new Map(),epNameSet:new Set(),review:[],placements:[],reviewMode:'cross',placementRevision:0,placementQuery:'',lastPlacementMove:null,
   workCopy:null,wcRows:null,compare:[],compareBuckets:{all:[],off:[],nohit:[],match:[]},tab:'tree',
   cmpFilter:'all',cmpSearch:'',cmpDiff:'all',cmpSort:null,revSearch:'',revSort:null,revMinPct:null,showStats:true,
@@ -1933,7 +1940,7 @@ function updateSelInfo(){
 
 /* ---- build ---- */
 async function buildMel(tick){
-  S.melRows=[];S.melByTag=new Map();S.melByNorm=new Map();S.melXfmBySuffix=new Map();
+  S.melRows=[];S.melByTag=new Map();S.melByNorm=new Map();S.melBySuffix=new Map();S.melLookupCache=new Map();S.melXfmBySuffix=new Map();
   for(const key of S.melSel){
     const [fid]=key.split(KEYSEP);if(!fileById(fid))continue;
     const mi=melInfo(key);if(!mi)continue;
@@ -1946,12 +1953,33 @@ async function buildMel(tick){
       if(existing){if(!existing.upn&&upn)existing.upn=upn;if(!existing.building&&building)existing.building=building;if(!existing.systemParent&&systemParent)existing.systemParent=systemParent;continue;}
       const rec={tag,upn,building,systemParent};S.melRows.push(rec);S.melByTag.set(keyTag,rec);
       const normKey=normSep(tag);if(normKey&&!S.melByNorm.has(normKey))S.melByNorm.set(normKey,rec);
+      const suffixKeys=new Set([normSep(stripPowerVariant(tag))]),separators=[...stripPowerVariant(tag).matchAll(/[\s\-_\/.]+/g)];
+      for(const match of separators){const suffixKey=normSep(stripPowerVariant(tag).slice(match.index+match[0].length));if(suffixKey)suffixKeys.add(suffixKey);}
+      for(const suffixKey of suffixKeys){if(!suffixKey)continue;const list=S.melBySuffix.get(suffixKey)||[];list.push(rec);S.melBySuffix.set(suffixKey,list);}
       if(hasEquipmentRole(tag,'XFM')){const suffix=equipmentSuffix(tag),list=S.melXfmBySuffix.get(suffix)||[];list.push(rec);S.melXfmBySuffix.set(suffix,list);}
     }
   }
 }
 function melRecord(value){return S.melByTag.get(tagKey(value))||S.melByNorm.get(normSep(cleanTag(value)))||null;}
-function melUpn(value){const rec=melRecord(value);return rec?rec.upn:'';}
+function melTagLookup(value){
+  const exact=melRecord(value);if(exact)return {record:exact,match:'exact',candidates:[exact]};
+  const key=normSep(stripPowerVariant(value));if(!key)return {record:null,match:'none',candidates:[]};
+  if(S.melLookupCache.has(key))return S.melLookupCache.get(key);
+  let candidates=[...new Set((S.melBySuffix.get(key)||[]))],match='contained';
+  if(!candidates.length){
+    const normalized=[],contained=[];
+    for(const rec of S.melRows){
+      const recKey=normSep(stripPowerVariant(rec.tag));if(!recKey)continue;
+      if(recKey===key)normalized.push(rec);else if(recKey.endsWith(key))candidates.push(rec);else if(recKey.includes(key))contained.push(rec);
+    }
+    if(normalized.length){candidates=normalized;match='normalized';}
+    else if(!candidates.length)candidates=contained;
+  }
+  const result={record:candidates.length===1?candidates[0]:null,match:candidates.length?match:'none',candidates};
+  S.melLookupCache.set(key,result);return result;
+}
+function melResolvedRecord(value){return melTagLookup(value).record;}
+function melUpn(value){const rec=melResolvedRecord(value);return rec?rec.upn:'';}
 function firstSystemParentTag(value){
   const parts=clean(value).split(/[;\n\r,|]+/).map(clean).filter(Boolean);
   return parts.length?cleanTag(parts[0]):'';
@@ -2319,23 +2347,31 @@ function buildMelSystemParentPlan(rows){
   for(const row of rows){
     const equip=cleanTag(row&&row[0]),key=tagKey(equip),currentParent=cleanTag(row&&row[1]);
     if(!equip||!currentParent||isSystemName(currentParent)||corrections.has(key))continue;
-    const equipmentMel=melRecord(equip);
+    const equipmentLookup=melTagLookup(equip),equipmentMel=equipmentLookup.record;
     if(!equipmentMel){
+      if(equipmentLookup.candidates.length>1){
+        addMelSystemParentWarning(plan,{equip,currentParent,missingField:'Unique Equipment Tag match',
+          reason:`MEL parent check skipped because ${equip} matched multiple MEL Equipment Tags`});continue;
+      }
       recordMelSystemParentCheck(plan,{equip,currentParent,status:'not-found',reason:`${equip} was not found in the MEL Equipment Tag column`});continue;
     }
     const equipmentUpn=clean(equipmentMel.upn);
     if(!equipmentUpn){
       addMelSystemParentWarning(plan,{equip,currentParent,missingField:'Equipment UPN',reason:`MEL parent check skipped because ${equip} has no UPN`});continue;
     }
-    const parentMel=melRecord(currentParent),parentUpn=clean(parentMel&&parentMel.upn);
+    const parentLookup=melTagLookup(currentParent),parentMel=parentLookup.record,parentUpn=clean(parentMel&&parentMel.upn);
     if(!parentMel){
+      if(parentLookup.candidates.length>1){
+        addMelSystemParentWarning(plan,{equip,currentParent,missingField:'Unique Closest Parent MEL match',
+          reason:`MEL parent check skipped because ${currentParent} matched multiple MEL Equipment Tags`});continue;
+      }
       addMelSystemParentWarning(plan,{equip,currentParent,missingField:'Closest Parent MEL record',reason:`MEL parent check skipped because ${currentParent} was not found in the MEL`});continue;
     }
     if(!parentUpn){
       addMelSystemParentWarning(plan,{equip,currentParent,missingField:'Closest Parent UPN',reason:`MEL parent check skipped because ${currentParent} has no UPN`});continue;
     }
     if(melUpnKey(equipmentUpn)===melUpnKey(parentUpn)){
-      recordMelSystemParentCheck(plan,{equip,currentParent,status:'matched',equipmentUpn,parentUpn,reason:'Equipment and Closest Parent UPNs match'});continue;
+      recordMelSystemParentCheck(plan,{equip,currentParent,status:'matched',equipmentUpn,parentUpn,equipmentMelTag:equipmentMel.tag,parentMelTag:parentMel.tag,reason:'Equipment and Closest Parent UPNs match'});continue;
     }
     const newParent=firstSystemParentTag(equipmentMel.systemParent);
     if(!newParent){
@@ -2348,7 +2384,7 @@ function buildMelSystemParentPlan(rows){
       addMelSystemParentWarning(plan,{equip,currentParent,missingField:'Consistent System Parent Equipment Tag',reason:`UPNs differ, but ${equip}'s System Parent repeats its current Closest Parent`});continue;
     }
     const parentRow=byEquipment.get(tagKey(currentParent));
-    corrections.set(key,{equip,currentParent,newParent,sourceParent:cleanTag(parentRow&&parentRow[1]),equipmentUpn,parentUpn});
+    corrections.set(key,{equip,currentParent,newParent,sourceParent:cleanTag(parentRow&&parentRow[1]),equipmentUpn,parentUpn,equipmentMelTag:equipmentMel.tag,parentMelTag:parentMel.tag});
   }
   return plan;
 }
@@ -3262,7 +3298,7 @@ function rowInner(node,prefixArr,isLast,isRoot,hl){
   const pmdBadge=node.pmdPanel?`<span class="dep pmd-link" title="Matched PMD panel">${ic('database')}${esc(node.pmdPanel)}</span>`:'';
   const descTitle=node.isInstrument&&node.description?` title="${esc(node.description)}"`:'';
   const nk=clean(node.name).toLowerCase();
-  const infoBtn=(S.depDetail.has(nk)||S.epDetail.has(nk)||S.cableStruckTags.has(tagKey(node.name))||melRecord(node.name)||S.melParentChecks.has(tagKey(node.name))||node.pmdKey||node.pmdPanel)?`<button class="rowinfo" data-detail="${node.id}" title="Details" aria-label="Details for ${esc(node.name)}">${ic('info')}</button>`:'';
+  const infoBtn=(S.depDetail.has(nk)||S.epDetail.has(nk)||S.cableStruckTags.has(tagKey(node.name))||melResolvedRecord(node.name)||S.melParentChecks.has(tagKey(node.name))||node.pmdKey||node.pmdPanel)?`<button class="rowinfo" data-detail="${node.id}" title="Details" aria-label="Details for ${esc(node.name)}">${ic('info')}</button>`:'';
   const placementBtn=node.placementId?`<button class="placement-flag" data-placement="${node.placementId}" title="Review this branch placement" aria-label="Review placement for ${esc(node.name)}">${ic('triangle-alert')}</button>`:'';
   if(isRoot){
     return `<div class="row root ${hasKids?'':'leafrow'}" data-id="${node.id}" ${hasKids?'data-exp="1"':''} tabindex="0" role="treeitem" aria-expanded="${hasKids?'false':''}">
@@ -3694,7 +3730,7 @@ function openDetail(nodeId){
   $('#drawer').setAttribute('aria-label','Equipment details');
   const nk=clean(node.name).toLowerCase();
   const d=S.depDetail.get(nk),ep=S.epDetail.get(nk);
-  const pmd=node.pmdKey?S.pmdDetail.get(node.pmdKey):null,mel=melRecord(node.name);
+  const pmd=node.pmdKey?S.pmdDetail.get(node.pmdKey):null,mel=melResolvedRecord(node.name);
   const melCheck=S.melParentChecks.get(tagKey(node.name));
   const placement=node.placementId?S.placements.find(item=>item.id===node.placementId&&!item.resolved):null;
   $('#drawerTitle').innerHTML=`${ic(node.isInstrument?'database':node.isLoad?'corner-down-right':'spline')}<span>${esc(node.name)}</span>`;
@@ -3707,6 +3743,8 @@ function openDetail(nodeId){
       :melCheck.status==='matched'?`No change · matching UPN ${melCheck.equipmentUpn}`
       :melCheck.status==='warning'?`Skipped · ${melCheck.reason}`:`Not evaluated · ${melCheck.reason}`;
     html+=fld('MEL parent check',result);
+    if(melCheck.equipmentMelTag&&tagKey(melCheck.equipmentMelTag)!==tagKey(node.name))html+=fld('Matched MEL Equipment Tag',melCheck.equipmentMelTag);
+    if(melCheck.parentMelTag&&tagKey(melCheck.parentMelTag)!==tagKey(melCheck.currentParent))html+=fld('Matched MEL parent tag',melCheck.parentMelTag);
     if(melCheck.status==='corrected'){html+=fld('Previous Closest Parent',melCheck.currentParent);html+=fld('MEL Closest Parent used',melCheck.newParent);}
   }else if(placement&&placement.status==='missing-data')html+=fld('MEL parent check',placement.reason);
   if(S.cableStruckTags.has(tagKey(node.name)))html+=fld('Cable Schedule status','Struck through in source');
