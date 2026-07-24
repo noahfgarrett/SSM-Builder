@@ -272,17 +272,15 @@ test('Load Description relations use ID Name, Final Source, and self-match rules
   assert.deepEqual(JSON.parse(pathValue).segs, ['ROOT', 'DS-1', 'SHARED', 'ID-1'])
 })
 
-test('Cable Schedule parents override Easy Power parents and dependencies', () => {
+test('Cable Schedule chains replace duplicate parents and add missing hierarchy panels', () => {
   assert.match(html, /function buildCableParentPlan\(rows\)/)
   assert.match(html, /const candidates=\[\],resolved=\[\],relations=new Map\(\)/)
   assert.match(html, /for\(const \{equip,parent,cableParent,seedKey\} of candidates\)/)
   assert.doesNotMatch(html, /existing\.has\(cursorKey\)\|\|relations\.has\(cursorKey\)/)
-  assert.doesNotMatch(html, /tagKey\(parent\)!==tagKey\(dependency\)/)
-  assert.match(html, /dependency:parent,generated:false/)
-  assert.match(html, /fixed\[1\]=relation\.parent;fixed\[2\]=relation\.dependency\|\|''/)
+  assert.match(html, /tagKey\(parent\)!==tagKey\(dependency\)/)
   assert.match(html, /function repairCableHierarchyParents\(root,plan\)/)
   assert.match(html, /function repairCableSsmRows\(rows,plan\)/)
-  assert.match(html, /occurrence\.node\.dependencyOverride=relation\.dependency\|\|''/)
+  assert.match(html, /meta\.keepDuplicateDep=true/)
   assert.match(html, /repairCableHierarchyParents\(combined,combinedCablePlan\)/)
   assert.match(html, /repairCableHierarchyParents\(sh\._sMap,plan\)/)
   const value = runInNewContext(`${customScript}
@@ -297,7 +295,7 @@ test('Cable Schedule parents override Easy Power parents and dependencies', () =
     const rows=[
       ['ROOT',''],
       ['EP-PARENT','ROOT'],
-      ['LOAD-ALPHA','EP-PARENT','EP-OLD-DEPENDENCY'],
+      ['LOAD-ALPHA','EP-PARENT','EP-PARENT',{keepDuplicateDep:true}],
       ['LOAD-BRAVO','SAME-PANEL','SAME-PANEL',{keepDuplicateDep:true}],
       ['LOAD-CYCLE','OLD-CYCLE','OLD-CYCLE',{keepDuplicateDep:true}]
     ];
@@ -306,7 +304,7 @@ test('Cable Schedule parents override Easy Power parents and dependencies', () =
     const reversedPlan=buildCableParentPlan(rows),orderIndependent=JSON.stringify(relationsBefore)===JSON.stringify([...reversedPlan.relations.values()]);
     const repaired=repairCableSsmRows(rows,plan);
     const child={name:'INSTRUMENT-ALPHA',kids:new Map(),isId:false};
-    const load={name:'LOAD-ALPHA',kids:new Map([[child.name,child]]),isId:false,isLoad:true,loadDependency:'EP-OLD-DEPENDENCY'};
+    const load={name:'LOAD-ALPHA',kids:new Map([[child.name,child]]),isId:false,isLoad:true,loadDependency:'EP-PARENT'};
     const ep={name:'EP-PARENT',kids:new Map([[load.name,load]]),isId:true};
     const source={name:'ROOT',kids:new Map([[ep.name,ep]]),isId:false};
     const tree={name:'__root__',kids:new Map([[source.name,source]])};
@@ -327,24 +325,24 @@ test('Cable Schedule parents override Easy Power parents and dependencies', () =
   `, { console, setTimeout, clearTimeout })
   assert.deepEqual(JSON.parse(value), {
     relations: [
-      { equip: 'LOAD-ALPHA', parent: 'CABLE-PANEL-1', dependency: 'EP-PARENT' },
-      { equip: 'CABLE-PANEL-1', parent: 'CABLE-PANEL-2', dependency: '' },
-      { equip: 'CABLE-PANEL-2', parent: 'EP-PARENT', dependency: '' },
+      { equip: 'LOAD-ALPHA', parent: 'CABLE-PANEL-1' },
+      { equip: 'CABLE-PANEL-1', parent: 'CABLE-PANEL-2' },
+      { equip: 'CABLE-PANEL-2', parent: 'EP-PARENT' },
     ],
     seeds: ['load-alpha'],
     generated: ['cable-panel-1', 'cable-panel-2'],
     epKids: ['CABLE-PANEL-2'],
     panel2Kids: ['CABLE-PANEL-1'],
     panel1Kids: ['LOAD-ALPHA'],
-    movedDependency: 'EP-PARENT',
+    movedDependency: 'CABLE-PANEL-1',
     movedKids: ['INSTRUMENT-ALPHA'],
     orderIndependent: true,
     repaired: [
       { equip: 'ROOT', parent: '', dep: '', keepDuplicateDep: false },
       { equip: 'EP-PARENT', parent: 'ROOT', dep: '', keepDuplicateDep: false },
-      { equip: 'CABLE-PANEL-2', parent: 'EP-PARENT', dep: '', keepDuplicateDep: false },
-      { equip: 'CABLE-PANEL-1', parent: 'CABLE-PANEL-2', dep: '', keepDuplicateDep: false },
-      { equip: 'LOAD-ALPHA', parent: 'CABLE-PANEL-1', dep: 'EP-PARENT', keepDuplicateDep: false },
+      { equip: 'CABLE-PANEL-2', parent: 'EP-PARENT', dep: 'EP-PARENT', keepDuplicateDep: true },
+      { equip: 'CABLE-PANEL-1', parent: 'CABLE-PANEL-2', dep: 'CABLE-PANEL-2', keepDuplicateDep: true },
+      { equip: 'LOAD-ALPHA', parent: 'CABLE-PANEL-1', dep: 'CABLE-PANEL-1', keepDuplicateDep: true },
       { equip: 'LOAD-BRAVO', parent: 'SAME-PANEL', dep: 'SAME-PANEL', keepDuplicateDep: true },
       { equip: 'LOAD-CYCLE', parent: 'OLD-CYCLE', dep: 'OLD-CYCLE', keepDuplicateDep: true },
     ],
