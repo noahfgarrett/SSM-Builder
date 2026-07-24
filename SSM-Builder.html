@@ -673,7 +673,7 @@ const NAT_COLLATOR=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'}
 const natCmp=(a,b)=>NAT_COLLATOR.compare(String(a),String(b));
 const KEYSEP='\u0001';
 
-const APP_VERSION = '1.1.35';
+const APP_VERSION = '1.1.36';
 const UPDATE_RELEASE_API = 'https://api.github.com/repos/noahfgarrett/SSM-Builder/releases/latest';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/noahfgarrett/SSM-Builder';
 const UPDATE_TIMEOUT_MS = 5000;
@@ -681,6 +681,13 @@ let pendingUpdateInfo=null;
 let activeUpdateTab='update';
 let updateModalDismissed=false;
 const CHANGELOG=[
+  {
+    version:'1.1.36',
+    date:'2026-07-24T11:17:25Z',
+    type:'fix',
+    stats:{fixes:1},
+    notes:`- Fixed Cable Schedule parent corrections so displaced Easy Power parents become dependencies`
+  },
   {
     version:'1.1.35',
     date:'2026-07-23T20:09:52Z',
@@ -2563,13 +2570,12 @@ function buildCableParentPlan(rows){
   const candidates=[],resolved=[],relations=new Map(),seeds=new Set(),generated=new Set(),unresolved=[];
   for(const row of rows){
     const equip=cleanTag(row&&row[0]),parent=cleanTag(row&&row[1]);
-    const dependency=row&&row[2]!=null?cleanTag(row[2]):depOf(equip);
     const cableParent=depOf(equip),seedKey=tagKey(equip);
-    if(!equip||!parent||!dependency||tagKey(parent)!==tagKey(dependency)||!cableParent||tagKey(cableParent)===tagKey(parent))continue;
+    if(!equip||!cableParent||tagKey(cableParent)===tagKey(parent))continue;
     candidates.push({equip,parent,cableParent,seedKey});
   }
   for(const {equip,parent,cableParent,seedKey} of candidates){
-    const local=[{equip,parent:cableParent,generated:false}],seen=new Set([seedKey]);
+    const local=[{equip,parent:cableParent,dependency:parent,generated:false}],seen=new Set([seedKey]);
     let cursor=cableParent,cyclic=false,anchored=false;
     while(cursor){
       const cursorKey=tagKey(cursor);
@@ -2577,7 +2583,7 @@ function buildCableParentPlan(rows){
       seen.add(cursorKey);
       if(cursorKey===tagKey(parent)||existing.has(cursorKey)){anchored=true;break;}
       const upstream=depOf(cursor);
-      local.push({equip:cursor,parent:upstream,generated:true});
+      local.push({equip:cursor,parent:upstream,dependency:'',generated:true});
       if(!upstream)break;
       cursor=upstream;
     }
@@ -2588,9 +2594,12 @@ function buildCableParentPlan(rows){
   for(const candidate of resolved){
     seeds.add(candidate.seedKey);
     for(const relation of candidate.local){
-      const key=tagKey(relation.equip);if(relations.has(key))continue;
-      relations.set(key,{equip:relation.equip,parent:relation.parent});
-      if(relation.generated)generated.add(key);
+      const key=tagKey(relation.equip);
+      if(relation.generated){
+        if(!relations.has(key)){relations.set(key,{equip:relation.equip,parent:relation.parent,dependency:''});generated.add(key);}
+      }else{
+        relations.set(key,{equip:relation.equip,parent:relation.parent,dependency:relation.dependency});generated.delete(key);
+      }
     }
   }
   return {relations,seeds,generated,unresolved};
@@ -2653,7 +2662,8 @@ function repairCableHierarchyParents(root,plan){
       if(existing)target=existing[1];
       else{const node={name:chain[i],kids:new Map(),isId:false};target.kids.set(chain[i],node);indexRawHierarchyNode(index,target,chain[i],node);target=node;}
     }
-    if(occurrence.node.isLoad)occurrence.node.loadDependency=relation.parent;
+    occurrence.node.dependencyOverride=relation.dependency||'';
+    if(occurrence.node.isLoad)occurrence.node.loadDependency=relation.dependency||'';
     const duplicate=indexedRawKidEntry(index,target,occurrence.node.name);
     if(duplicate&&duplicate[1]!==occurrence.node)mergeRawHierarchyNodeIndexed(index,duplicate[1],occurrence.node);
     else{target.kids.set(occurrence.node.name,occurrence.node);index.location.set(occurrence.node,{holder:target,key:occurrence.node.name});}
@@ -2662,8 +2672,12 @@ function repairCableHierarchyParents(root,plan){
   return moved;
 }
 function cablePlannedSsmRow(relation,row){
-  const fixed=row?[...row]:[relation.equip,'',''];fixed[0]=row?row[0]:relation.equip;fixed[1]=relation.parent;fixed[2]=relation.parent;
-  if(relation.parent){const meta=fixed[3]&&typeof fixed[3]==='object'?{...fixed[3]}:{};meta.keepDuplicateDep=true;fixed[3]=meta;}
+  const fixed=row?[...row]:[relation.equip,'',''];fixed[0]=row?row[0]:relation.equip;fixed[1]=relation.parent;fixed[2]=relation.dependency||'';
+  if(fixed[3]&&typeof fixed[3]==='object'){
+    const meta={...fixed[3]};delete meta.keepDuplicateDep;
+    if(relation.parent&&tagKey(relation.parent)===tagKey(relation.dependency))meta.keepDuplicateDep=true;
+    if(Object.keys(meta).length)fixed[3]=meta;else fixed.length=3;
+  }
   return fixed;
 }
 function repairCableSsmRows(rows,plan){
